@@ -16,7 +16,10 @@ fn parse_input(lines: Vec<String>) -> Vec<i32> {
 }
 
 fn solution(calories: Vec<i32>) -> i32 {
-    calories.into_iter().max().unwrap_or_default()
+    let mut copy = calories;
+    copy.sort();
+    copy.reverse();
+    copy.iter().take(3).sum()
 }
 
 fn main() {
@@ -37,7 +40,7 @@ mod tests {
 
     #[test]
     fn test_solution() {
-        assert_eq!(solution(vec![10, 20, 30]), 30);
+        assert_eq!(solution(vec![10, 20, 30]), 60);
         assert_eq!(solution(vec![]), 0);
     }
 }
