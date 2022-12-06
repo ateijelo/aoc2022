@@ -1,29 +1,44 @@
 import sys
 
-# (Play::Rock, Outcome::Loss) => Play::Scissors,
-# (Play::Rock, Outcome::Draw) => Play::Rock,
-# (Play::Rock, Outcome::Win) => Play::Paper,
-# (Play::Paper, Outcome::Loss) => Play::Rock,
-# (Play::Paper, Outcome::Draw) => Play::Paper,
-# (Play::Paper, Outcome::Win) => Play::Scissors,
-# (Play::Scissors, Outcome::Loss) => Play::Paper,
-# (Play::Scissors, Outcome::Draw) => Play::Scissors,
-# (Play::Scissors, Outcome::Win) => Play::Rock,
 
-cases = {
-    "A X": 3 + 0,
-    "A Y": 1 + 3,
-    "A Z": 2 + 6,
-    "B X": 1 + 0,
-    "B Y": 2 + 3,
-    "B Z": 3 + 6,
-    "C X": 2 + 0,
-    "C Y": 3 + 3,
-    "C Z": 1 + 6,
-}
+def value(letter):
+    if "a" <= letter <= "z":
+        return ord(letter) - ord("a") + 1
+    if "A" <= letter <= "Z":
+        return ord(letter) - ord("A") + 27
+    return 0
 
-score = 0
-for line in sys.stdin:
-    score += cases[line.strip()]
 
-print(score)
+def solution(lines):
+    sum = 0
+    for line in lines:
+        l = len(line)
+        a = line[: l // 2]
+        b = line[l // 2 :]
+        common = set(a).intersection(set(b))
+        # print(a, b, value(common.pop()))
+        sum += value(common.pop())
+    return sum
+
+
+if __name__ == "__main__":
+    print(solution(line.strip() for line in sys.stdin))
+
+
+def test_value():
+    assert value("a") == 1
+    assert value("z") == 26
+    assert value("A") == 27
+    assert value("Z") == 52
+
+
+def test_example():
+    lines = [
+        "vJrwpWtwJgWrhcsFMMfFFhFp",
+        "jqHRNqRjqzjGDLGLrsFMfFZSrLrFZsSL",
+        "PmmdzqPrVvPwwTWBwg",
+        "wMqvLMZHhHMvwLHjbvcjnnSBnvTQFn",
+        "ttgJtRGJQctTZtZT",
+        "CrZsJsPPZsGzwwsLwLmpwMDw",
+    ]
+    assert solution(lines) == 157
