@@ -12,20 +12,30 @@ fn letter_value(c: char) -> u32 {
     }
 }
 
-fn parse_input(lines: &Vec<String>) -> Vec<(&str, &str)> {
-    let mut pairs = vec![];
-    for line in lines {
-        pairs.push(line.split_at(line.len() / 2));
+struct Group<'a>(&'a str, &'a str, &'a str);
+
+fn parse_input(lines: &Vec<String>) -> Vec<Group> {
+    let mut groups = vec![];
+    let mut i = 0;
+    while i < lines.len() {
+        groups.push(Group(
+            lines[i].as_str(),
+            lines[i + 1].as_str(),
+            lines[i + 2].as_str(),
+        ));
+        i += 3;
     }
-    pairs
+    groups
 }
 
-fn solution(pairs: Vec<(&str, &str)>) -> u32 {
+fn solution(groups: Vec<Group>) -> u32 {
     let mut sum = 0;
-    for pair in pairs {
-        let h1: HashSet<char> = pair.0.chars().collect();
-        let h2: HashSet<char> = pair.1.chars().collect();
-        let common = h1.intersection(&h2).next().unwrap();
+    for group in groups {
+        let h1: HashSet<char> = group.0.chars().collect();
+        let h2: HashSet<char> = group.1.chars().collect();
+        let h3: HashSet<char> = group.2.chars().collect();
+        let h1h2: HashSet<char> = h1.intersection(&h2).copied().collect();
+        let common = h1h2.intersection(&h3).next().unwrap();
         sum += letter_value(*common);
     }
     sum
@@ -61,6 +71,6 @@ mod tests {
         ];
         let lines: Vec<String> = lines.iter().map(|x| x.to_string()).collect();
         let pairs = parse_input(&lines);
-        assert_eq!(solution(pairs), 157);
+        assert_eq!(solution(pairs), 70);
     }
 }

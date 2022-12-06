@@ -11,18 +11,18 @@ def value(letter):
 
 def solution(lines):
     sum = 0
-    for line in lines:
-        l = len(line)
-        a = line[: l // 2]
-        b = line[l // 2 :]
-        common = set(a).intersection(set(b))
-        # print(a, b, value(common.pop()))
+    for i in range(0, len(lines), 3):
+        a = set(lines[i])
+        b = set(lines[i + 1])
+        c = set(lines[i + 2])
+
+        common = a.intersection(b, c)
         sum += value(common.pop())
     return sum
 
 
 if __name__ == "__main__":
-    print(solution(line.strip() for line in sys.stdin))
+    print(solution([line.strip() for line in sys.stdin]))
 
 
 def test_value():
@@ -41,4 +41,4 @@ def test_example():
         "ttgJtRGJQctTZtZT",
         "CrZsJsPPZsGzwwsLwLmpwMDw",
     ]
-    assert solution(lines) == 157
+    assert solution(lines) == 70
