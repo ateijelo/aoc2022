@@ -1,44 +1,45 @@
-use std::{
-    char,
-    collections::HashSet,
-    io::{self, BufRead},
-};
+use std::io::{self, BufRead};
 
-fn letter_value(c: char) -> u32 {
-    match c {
-        'a'..='z' => c as u32 - 'a' as u32 + 1,
-        'A'..='Z' => c as u32 - 'A' as u32 + 27,
-        _ => 0,
+struct Range {
+    start: i32,
+    end: i32,
+}
+
+impl Range {
+    fn new(rangestr: &str) -> Range {
+        let s: Vec<String> = String::from(rangestr)
+            .split('-')
+            .map(|x| x.to_string())
+            .collect();
+        assert_eq!(s.len(), 2);
+        let a = s[0].parse::<i32>().unwrap();
+        let b = s[1].parse::<i32>().unwrap();
+        Range { start: a, end: b }
+    }
+
+    fn contains(&self, other: &Range) -> bool {
+        self.start <= other.start && self.end >= other.end
     }
 }
 
-struct Group<'a>(&'a str, &'a str, &'a str);
-
-fn parse_input(lines: &Vec<String>) -> Vec<Group> {
-    let mut groups = vec![];
-    let mut i = 0;
-    while i < lines.len() {
-        groups.push(Group(
-            lines[i].as_str(),
-            lines[i + 1].as_str(),
-            lines[i + 2].as_str(),
-        ));
-        i += 3;
+fn parse_input(lines: &Vec<String>) -> Vec<(Range, Range)> {
+    let mut pairs = vec![];
+    for line in lines {
+        let s: Vec<&str> = line.split(',').collect();
+        pairs.push((Range::new(s[0]), Range::new(s[1])));
     }
-    groups
+    pairs
 }
 
-fn solution(groups: Vec<Group>) -> u32 {
-    let mut sum = 0;
-    for group in groups {
-        let h1: HashSet<char> = group.0.chars().collect();
-        let h2: HashSet<char> = group.1.chars().collect();
-        let h3: HashSet<char> = group.2.chars().collect();
-        let h1h2: HashSet<char> = h1.intersection(&h2).copied().collect();
-        let common = h1h2.intersection(&h3).next().unwrap();
-        sum += letter_value(*common);
+fn solution(pairs: Vec<(Range, Range)>) -> u32 {
+    let mut count = 0;
+    for pair in pairs {
+        let (a, b) = pair;
+        if a.contains(&b) || b.contains(&a) {
+            count += 1
+        }
     }
-    sum
+    count
 }
 
 fn main() {
@@ -52,25 +53,29 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_values() {
-        assert_eq!(letter_value('a'), 1);
-        assert_eq!(letter_value('z'), 26);
-        assert_eq!(letter_value('A'), 27);
-        assert_eq!(letter_value('Z'), 52);
+    fn test_ranges() {
+        let a = Range::new("5-15");
+        let b = Range::new("10-25");
+        let c = Range::new("1-30");
+        assert_eq!(a.start, 5);
+        assert_eq!(a.end, 15);
+        assert!(c.contains(&a));
+        assert!(c.contains(&b));
+        assert!(!a.contains(&b));
     }
 
     #[test]
     fn test_example() {
         let lines = [
-            "vJrwpWtwJgWrhcsFMMfFFhFp",
-            "jqHRNqRjqzjGDLGLrsFMfFZSrLrFZsSL",
-            "PmmdzqPrVvPwwTWBwg",
-            "wMqvLMZHhHMvwLHjbvcjnnSBnvTQFn",
-            "ttgJtRGJQctTZtZT",
-            "CrZsJsPPZsGzwwsLwLmpwMDw",
+            "2-4,6-8",
+            "2-3,4-5",
+            "5-7,7-9",
+            "2-8,3-7",
+            "6-6,4-6",
+            "2-6,4-8",
         ];
         let lines: Vec<String> = lines.iter().map(|x| x.to_string()).collect();
         let pairs = parse_input(&lines);
-        assert_eq!(solution(pairs), 70);
+        assert_eq!(solution(pairs), 2);
     }
 }
