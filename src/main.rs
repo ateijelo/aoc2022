@@ -8,16 +8,32 @@ enum Play {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-struct Round {
-    elf: Play,
-    me: Play,
+enum Outcome {
+    Loss,
+    Draw,
+    Win,
 }
 
-fn map(s: &str) -> Play {
+#[derive(Debug, PartialEq, Eq)]
+struct Round {
+    elf: Play,
+    outcome: Outcome,
+}
+
+fn map_play(s: &str) -> Play {
     match s {
-        "A" | "X" => Play::Rock,
-        "B" | "Y" => Play::Paper,
-        "C" | "Z" => Play::Scissors,
+        "A" => Play::Rock,
+        "B" => Play::Paper,
+        "C" => Play::Scissors,
+        _ => panic!(),
+    }
+}
+
+fn map_outcome(s: &str) -> Outcome {
+    match s {
+        "X" => Outcome::Loss,
+        "Y" => Outcome::Draw,
+        "Z" => Outcome::Win,
         _ => panic!(),
     }
 }
@@ -27,8 +43,8 @@ fn parse_input(lines: Vec<String>) -> Vec<Round> {
     for line in lines {
         let words: Vec<&str> = line.split_whitespace().collect();
         rounds.push(Round {
-            elf: map(words[0]),
-            me: map(words[1]),
+            elf: map_play(words[0]),
+            outcome: map_outcome(words[1]),
         });
     }
     rounds
@@ -37,18 +53,31 @@ fn parse_input(lines: Vec<String>) -> Vec<Round> {
 // A rock, B paper, C scissors
 // X rock, Y paper, Z scissors
 
-fn play(round: Round) -> i32 {
+fn play(round: &Round) -> i32 {
     // rock beats scissors
     // scissors beat paper
     // paper beats rock
+
+    let my_play = match (&round.elf, &round.outcome) {
+        (Play::Rock, Outcome::Loss) => Play::Scissors,
+        (Play::Rock, Outcome::Draw) => Play::Rock,
+        (Play::Rock, Outcome::Win) => Play::Paper,
+        (Play::Paper, Outcome::Loss) => Play::Rock,
+        (Play::Paper, Outcome::Draw) => Play::Paper,
+        (Play::Paper, Outcome::Win) => Play::Scissors,
+        (Play::Scissors, Outcome::Loss) => Play::Paper,
+        (Play::Scissors, Outcome::Draw) => Play::Scissors,
+        (Play::Scissors, Outcome::Win) => Play::Rock,
+    };
+
     println!("playing round: {:?}", round);
-    let selection_score = match round.me {
+    let selection_score = match my_play {
         Play::Rock => 1,
         Play::Paper => 2,
         Play::Scissors => 3,
     };
     println!("selection score: {:?}", selection_score);
-    let outcome_score = match (round.elf, round.me) {
+    let outcome_score = match (&round.elf, &my_play) {
         (Play::Rock, Play::Rock) => 3,
         (Play::Rock, Play::Paper) => 6,
         (Play::Rock, Play::Scissors) => 0,
@@ -66,7 +95,7 @@ fn play(round: Round) -> i32 {
 fn solution(rounds: Vec<Round>) -> i32 {
     let mut score = 0;
     for round in rounds {
-        score += play(round);
+        score += play(&round);
     }
     score
 }
@@ -93,15 +122,15 @@ mod tests {
             vec![
                 Round {
                     elf: Play::Rock,
-                    me: Play::Paper
+                    outcome: Outcome::Draw
                 },
                 Round {
                     elf: Play::Paper,
-                    me: Play::Rock
+                    outcome: Outcome::Loss
                 },
                 Round {
                     elf: Play::Scissors,
-                    me: Play::Scissors
+                    outcome: Outcome::Win
                 }
             ]
         );
@@ -112,17 +141,17 @@ mod tests {
         let rounds = vec![
             Round {
                 elf: Play::Rock,
-                me: Play::Paper,
+                outcome: Outcome::Draw,
             },
             Round {
                 elf: Play::Paper,
-                me: Play::Rock,
+                outcome: Outcome::Loss,
             },
             Round {
                 elf: Play::Scissors,
-                me: Play::Scissors,
+                outcome: Outcome::Win,
             },
         ];
-        assert_eq!(solution(rounds), 15);
+        assert_eq!(solution(rounds), 12);
     }
 }
