@@ -70,14 +70,11 @@ fn parse_input(lines: &Vec<String>) -> Plan {
 }
 
 fn solution(plan: &mut Plan) -> String {
-    println!("stacks: {:?}", &plan.stacks);
     for instruction in &plan.instructions {
-        for _ in 0..instruction.count {
-            println!("instruction: {:?}", instruction);
-            let c = plan.stacks[instruction.from - 1].pop().unwrap();
-            let to = &mut plan.stacks[instruction.to - 1];
-            to.push(c);
-        }
+        let from = &mut plan.stacks[instruction.from - 1];
+        let c = from.split_off(from.len() - instruction.count);
+        let to = &mut plan.stacks[instruction.to - 1];
+        to.push_str(&c);
     }
     let mut result = "".to_string();
     for stack in &mut plan.stacks {
@@ -89,36 +86,12 @@ fn solution(plan: &mut Plan) -> String {
 fn main() {
     let lines = io::stdin().lock().lines();
     let lines = lines.map(|line| line.unwrap()).collect();
-    println!("{:?}", solution(&mut parse_input(&lines)));
+    println!("{}", solution(&mut parse_input(&lines)));
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // #[test]
-    // fn test_ranges() {
-    //     let a = Range::new("5-15");
-    //     let b = Range::new("10-25");
-    //     let c = Range::new("1-30");
-    //     assert_eq!(a.start, 5);
-    //     assert_eq!(a.end, 15);
-    //     assert!(c._contains(&a));
-    //     assert!(c._contains(&b));
-    //     assert!(!a._contains(&b));
-    // }
-    //
-    // #[test]
-    // fn test_overlaps() {
-    //     assert!( Range::new("5-7").overlaps(&Range::new("7-9")));
-    //     assert!( Range::new("2-8").overlaps(&Range::new("3-7")));
-    //     assert!( Range::new("6-6").overlaps(&Range::new("4-6")));
-    //     assert!( Range::new("2-6").overlaps(&Range::new("4-8")));
-    //     assert!( Range::new("2-2").overlaps(&Range::new("2-2")));
-    //
-    //     assert!(!Range::new("1-1").overlaps(&Range::new("2-2")));
-    //     assert!(!Range::new("1-5").overlaps(&Range::new("6-7")));
-    // }
 
     #[test]
     fn test_parse_stacks() {
@@ -195,7 +168,7 @@ mod tests {
         ];
         let lines: Vec<String> = lines.iter().map(|x| x.to_string()).collect();
         let mut plan = parse_input(&lines);
-        assert_eq!(solution(&mut plan), "CMZ");
+        assert_eq!(solution(&mut plan), "MCD");
         println!("stacks: {:?}", &plan.stacks);
     }
 }
