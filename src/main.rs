@@ -9,10 +9,11 @@ fn parse_input(lines: &[String]) -> &String {
 }
 
 fn solution(line: &String) -> usize {
-    for i in 0..(line.len()-4) {
-        let h: HashSet<char> = HashSet::from_iter(line[i..(i+4)].chars());
-        if h.len() == 4 {
-            return i + 4;
+    let marker_length = 14;
+    for i in 0..(line.len()-marker_length) {
+        let h: HashSet<char> = HashSet::from_iter(line[i..(i+marker_length)].chars());
+        if h.len() == marker_length {
+            return i + marker_length;
         }
     }
     0
@@ -30,9 +31,10 @@ mod tests {
 
     #[test]
     fn test_example() {
-        assert_eq!(solution(parse_input(&["bvwbjplbgvbhsrlpgdmjqwftvncz".to_string()])), 5);
-        assert_eq!(solution(parse_input(&["nppdvjthqldpwncqszvftbrmjlhg".to_string()])), 6);
-        assert_eq!(solution(parse_input(&["nznrnfrfntjfmvfwmzdfjlvtqnbhcprsg".to_string()])), 10);
-        assert_eq!(solution(parse_input(&["zcfzfwzzqfrljwzlrfnpqdbhtmscgvjw".to_string()])), 11);
+        assert_eq!(solution(parse_input(&["mjqjpqmgbljsphdztnvjfqwrcgsmlb".to_string()])), 19);
+        assert_eq!(solution(parse_input(&["bvwbjplbgvbhsrlpgdmjqwftvncz".to_string()])), 23);
+        assert_eq!(solution(parse_input(&["nppdvjthqldpwncqszvftbrmjlhg".to_string()])), 23);
+        assert_eq!(solution(parse_input(&["nznrnfrfntjfmvfwmzdfjlvtqnbhcprsg".to_string()])), 29);
+        assert_eq!(solution(parse_input(&["zcfzfwzzqfrljwzlrfnpqdbhtmscgvjw".to_string()])), 26);
     }
 }
