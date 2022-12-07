@@ -23,7 +23,7 @@ def solution(lines):
     for line in lines:
         a, b = line.split(",")
         a, b = Range(a), Range(b)
-        if a.contains(b) or b.contains(a):
+        if a.overlaps(b):
             count += 1
     return count
 
@@ -41,7 +41,7 @@ def test_example():
         "6-6,4-6",
         "2-6,4-8",
     ]
-    assert solution(lines) == 2
+    assert solution(lines) == 4
 
 def test_range():
     a = Range("5-15")
