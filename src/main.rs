@@ -1,146 +1,72 @@
-use std::{
-    cell::RefCell,
-    char,
-    collections::HashMap,
-    fmt::Debug,
-    io::{self, BufRead},
-    rc::{Rc, Weak},
-};
+use std::io::{self, BufRead};
 
-#[derive(Debug)]
-enum NodeType {
-    Directory,
-    File,
-}
-
-type NodePtr = Rc<RefCell<Node>>;
-type NodeWeakPtr = Weak<RefCell<Node>>;
-
-struct Node {
-    name: String,
-    node_type: NodeType,
-    size: usize,
-    children: HashMap<String, NodePtr>,
-    parent: NodeWeakPtr,
-}
-
-impl Debug for Node {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Node {{ name = {}, type = {:?}, size = {}, children = {:?}, parent = {:?} }}",
-            self.name,
-            self.node_type,
-            self.size,
-            self.children.keys().collect::<Vec<&String>>(),
-            self.parent.upgrade()
-        )
-    }
-}
-
-fn parse_input(lines: &[String]) -> NodePtr {
-    let root = Rc::new(RefCell::new(Node {
-        name: "/".to_string(),
-        node_type: NodeType::Directory,
-        size: 0,
-        children: HashMap::new(),
-        parent: Weak::new(),
-    }));
-    let mut cwd = Rc::clone(&root);
-    let mut dirstack: Vec<NodePtr> = vec![];
+fn parse_input(lines: &[String]) -> Vec<Vec<u32>> {
+    let mut map: Vec<Vec<u32>> = vec![];
     for line in lines {
-        let parts: Vec<&str> = line.split_whitespace().collect();
-        match parts[..] {
-            ["$", "cd", "/"] => {}
-            ["$", "cd", ".."] => {
-                let tmp = cwd.borrow().parent.upgrade();
-                if tmp.is_none() {
-                    continue;
-                }
-                cwd = tmp.unwrap();
-                dirstack.pop();
-            }
-            ["$", "cd", name] => {
-                dirstack.push(Rc::clone(&cwd));
-                let tmp = cwd.borrow().children.get(name).unwrap().clone();
-                cwd = tmp;
-            }
-            ["$", "ls"] => {}
-            ["dir", name] => {
-                let new_node = Node {
-                    name: name.to_string(),
-                    node_type: NodeType::Directory,
-                    size: 0,
-                    children: HashMap::new(),
-                    parent: Rc::downgrade(&cwd),
-                };
-                cwd.borrow_mut()
-                    .children
-                    .insert(name.to_string(), Rc::new(RefCell::new(new_node)));
-            }
-            [filesize, name] if filesize.starts_with(|c: char| c.is_ascii_digit()) => {
-                cwd.borrow_mut().children.insert(
-                    name.to_string(),
-                    Rc::new(RefCell::new(Node {
-                        name: name.to_string(),
-                        node_type: NodeType::File,
-                        size: filesize.parse().unwrap(),
-                        children: HashMap::new(),
-                        parent: Rc::downgrade(&cwd),
-                    })),
-                );
-            }
-            _ => {}
-        }
+        map.push(line.chars().map(|c| c.to_digit(10).unwrap()).collect())
     }
-    root
+    map
 }
 
-fn sum_up(node: NodePtr) -> usize {
-    let mut node_size;
-    {
-        let n = node.borrow();
-        node_size = n.size;
-        for child in n.children.values() {
-            node_size += sum_up(Rc::clone(child));
+fn is_visible(map: &[Vec<u32>], x: usize, y: usize) -> bool {
+    let v = map[y][x];
+    let height = map.len();
+    let width = map[0].len();
+
+    let mut up = true;
+    for row in map.iter().take(y) {
+        if row[x] >= v {
+            up = false;
+            break;
         }
     }
 
-    {
-        let mut n = node.borrow_mut();
-        n.size = node_size;
+    let mut down = true;
+    // for ty in y+1..height {
+    for row in map.iter().take(height).skip(y + 1) {
+        if row[x] >= v {
+            down = false;
+            break;
+        }
     }
 
-    node_size
+    let mut left = true;
+    for tx in 0..x {
+        if map[y][tx] >= v {
+            left = false;
+            break;
+        }
+    }
+
+    let mut right = true;
+    for tx in x + 1..width {
+        if map[y][tx] >= v {
+            right = false;
+            break;
+        }
+    }
+
+    up || down || left || right
 }
 
-fn free_up(node: NodePtr, free_space: usize, candidates: &mut Vec<usize>) {
-    let n = node.borrow();
-    match n.node_type {
-        NodeType::Directory => {
-            if free_space + n.size >= 30_000_000 {
-                candidates.push(n.size);
+fn solution(map: &Vec<Vec<u32>>) -> usize {
+    let height = map.len();
+    let width = map[0].len();
+    let mut count = 0;
+    for y in 0..height {
+        for x in 0..width {
+            if is_visible(map, x, y) {
+                count += 1;
             }
         }
-        NodeType::File => {}
     }
-    for child in n.children.values() {
-        free_up(child.clone(), free_space, candidates);
-    }
-}
-
-fn solution(node: NodePtr) -> usize {
-    sum_up(node.clone());
-    let free_space = 70_000_000 - node.borrow().size;
-    let mut candidates: Vec<usize> = vec![];
-    free_up(node, free_space, &mut candidates);
-    candidates.into_iter().min().unwrap()
+    count
 }
 
 fn main() {
     let lines = io::stdin().lock().lines();
     let lines: Vec<String> = lines.map(|line| line.unwrap()).collect();
-    println!("{}", solution(parse_input(&lines)));
+    println!("{}", solution(&parse_input(&lines)));
 }
 
 #[cfg(test)]
@@ -149,34 +75,20 @@ mod tests {
 
     #[test]
     fn test_example() {
-        let lines = [
-            "$ cd /",
-            "$ ls",
-            "dir a",
-            "14848514 b.txt",
-            "8504156 c.dat",
-            "dir d",
-            "$ cd a",
-            "$ ls",
-            "dir e",
-            "29116 f",
-            "2557 g",
-            "62596 h.lst",
-            "$ cd e",
-            "$ ls",
-            "584 i",
-            "$ cd ..",
-            "$ cd ..",
-            "$ cd d",
-            "$ ls",
-            "4060174 j",
-            "8033020 d.log",
-            "5626152 d.ext",
-            "7214296 k",
-        ];
+        let lines = "
+            30373
+            25512
+            65332
+            33549
+            35390
+        ";
 
-        let lines: Vec<String> = lines.iter().map(|x| x.to_string()).collect();
-        let node = parse_input(&lines);
-        assert_eq!(solution(node), 24933642);
+        let lines: Vec<String> = lines
+            .lines()
+            .map(|x| x.trim().to_string())
+            .filter(|x| !x.is_empty())
+            .collect();
+        let map = parse_input(&lines);
+        assert_eq!(solution(&map), 21);
     }
 }
