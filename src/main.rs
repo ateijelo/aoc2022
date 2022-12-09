@@ -8,59 +8,56 @@ fn parse_input(lines: &[String]) -> Vec<Vec<u32>> {
     map
 }
 
-fn is_visible(map: &[Vec<u32>], x: usize, y: usize) -> bool {
+fn scenic_score(map: &[Vec<u32>], x: usize, y: usize) -> usize {
     let v = map[y][x];
-    let height = map.len();
+    // let height = map.len();
     let width = map[0].len();
 
-    let mut up = true;
-    for row in map.iter().take(y) {
-        if row[x] >= v {
-            up = false;
+    let mut up = 0;
+    for ty in (0..y).rev() {
+        up += 1;
+        if map[ty][x] >= v {
             break;
         }
     }
 
-    let mut down = true;
-    // for ty in y+1..height {
-    for row in map.iter().take(height).skip(y + 1) {
+    let mut down = 0;
+    for row in map.iter().skip(y + 1) {
+        down += 1;
         if row[x] >= v {
-            down = false;
             break;
         }
     }
 
-    let mut left = true;
-    for tx in 0..x {
+    let mut left = 0;
+    for tx in (0..x).rev() {
+        left += 1;
         if map[y][tx] >= v {
-            left = false;
             break;
         }
     }
 
-    let mut right = true;
+    let mut right = 0;
     for tx in x + 1..width {
+        right += 1;
         if map[y][tx] >= v {
-            right = false;
             break;
         }
     }
 
-    up || down || left || right
+    up * down * left * right
 }
 
 fn solution(map: &Vec<Vec<u32>>) -> usize {
     let height = map.len();
     let width = map[0].len();
-    let mut count = 0;
+    let mut score = 0;
     for y in 0..height {
         for x in 0..width {
-            if is_visible(map, x, y) {
-                count += 1;
-            }
+            score = std::cmp::max(score, scenic_score(map, x, y));
         }
     }
-    count
+    score
 }
 
 fn main() {
@@ -89,6 +86,6 @@ mod tests {
             .filter(|x| !x.is_empty())
             .collect();
         let map = parse_input(&lines);
-        assert_eq!(solution(&map), 21);
+        assert_eq!(solution(&map), 8);
     }
 }
