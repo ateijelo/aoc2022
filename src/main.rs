@@ -22,42 +22,52 @@ fn parse_input(lines: &[String]) -> Vec<Instruction> {
     instructions
 }
 
-fn solution(instructions: &Vec<Instruction>) -> i32 {
-    let read_points = [20, 60, 100, 140, 180, 220];
+fn render(x: i32, cycle: i32, scanlines: &mut Vec<String>) {
+    let pixel = (cycle - 1) % 40;
+    if pixel == 0 {
+        scanlines.push("".to_string());
+    }
+    if i32::abs(x - pixel) <= 1 {
+        scanlines.last_mut().unwrap().push('#');
+    } else {
+        scanlines.last_mut().unwrap().push('.');
+    }
+}
+
+fn solution(instructions: &Vec<Instruction>) -> Vec<String>{
     let mut x = 1;
     let mut cycle = 1;
-    let mut strength = 0;
+    let mut scanlines: Vec<String> = vec![];
 
     for instr in instructions {
         match instr {
             Instruction::Noop => {
-                if read_points.contains(&cycle) {
-                    strength += cycle * x;
-                }
+                render(x, cycle, &mut scanlines);
                 cycle += 1;
             }
             Instruction::Addx(value) => {
                 for _ in 0..2 {
-                    if read_points.contains(&cycle) {
-                        strength += cycle * x;
-                    }
+                    render(x, cycle, &mut scanlines);
                     cycle += 1;
                 }
                 x += value;
             }
         }
     }
-    strength
+    scanlines
 }
 
-fn solve(lines: &[String]) -> i32 {
+fn solve(lines: &[String]) -> Vec<String> {
     solution(&parse_input(lines))
 }
 
 fn main() {
     let lines = io::stdin().lock().lines();
     let lines: Vec<String> = lines.map(|line| line.unwrap()).collect();
-    println!("{}", solve(&lines));
+    for line in solve(&lines) {
+        println!("{}", line);
+    }
+    // println!("{}", solve(&lines));
 }
 
 #[cfg(test)]
@@ -75,6 +85,13 @@ mod tests {
             .map(|x| x.unwrap().trim().to_string())
             .filter(|x| !x.is_empty())
             .collect();
-        assert_eq!(solve(&lines), 13140);
+        assert_eq!(solve(&lines), vec![
+            "##..##..##..##..##..##..##..##..##..##..".to_string(),
+            "###...###...###...###...###...###...###.".to_string(),
+            "####....####....####....####....####....".to_string(),
+            "#####.....#####.....#####.....#####.....".to_string(),
+            "######......######......######......####".to_string(),
+            "#######.......#######.......#######.....".to_string(),
+        ]);
     }
 }
