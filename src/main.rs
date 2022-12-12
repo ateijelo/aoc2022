@@ -1,77 +1,56 @@
-use std::{io::{self, BufRead}, collections::HashSet};
+use std::io::{self, BufRead};
 
-#[derive(Debug)]
-enum Direction {
-    Up,
-    Right,
-    Down,
-    Left,
+enum Instruction {
+    Noop,
+    Addx(i32),
 }
 
-#[derive(PartialEq, Debug, Clone)]
-struct Point {
-    x: i32,
-    y: i32,
-}
-
-impl Point {
-    fn walk(&mut self, direction: &Direction) {
-        match direction {
-            Direction::Up => { self.y += 1 }
-            Direction::Right => { self.x += 1 },
-            Direction::Down => { self.y -= 1 },
-            Direction::Left => { self.x -= 1 },
-        }
-    }
-
-    fn follow(&mut self, other: &Point) {
-        let dx = other.x - self.x;
-        let dy = other.y - self.y;
-        if i32::abs(dx) > 1 || i32::abs(dy) > 1 {
-            self.x += i32::signum(dx);
-            self.y += i32::signum(dy);
-        }
-    }
-}
-
-fn parse_input(lines: &[String]) -> Vec<(Direction, u32)> {
-    let mut steps: Vec<(Direction, u32)> = vec![];
+fn parse_input(lines: &[String]) -> Vec<Instruction> {
+    let mut instructions: Vec<Instruction> = vec![];
     for line in lines {
         let parts: Vec<&str> = line.split_whitespace().collect();
-        let d = match parts[0] {
-            "U" => Direction::Up,
-            "R" => Direction::Right,
-            "D" => Direction::Down,
-            "L" => Direction::Left,
-            _ => { panic!() }
-        };
-        let c: u32 = parts[1].parse().unwrap();
-        steps.push((d, c));
-    }
-    steps
-}
-
-
-fn solution(steps: &Vec<(Direction, u32)>) -> usize {
-    let rope_length = 10;
-    let mut knots: Vec<Point> = vec![Point { x:0, y:0 }; rope_length];
-    let mut visited: HashSet<(i32, i32)> = HashSet::new();
-
-    for (direction, count) in steps {
-        for _ in 0..*count {
-            knots[0].walk(direction);
-            for i in 1..rope_length {
-                let t = knots[i-1].clone();
-                knots[i].follow(&t);
+        match parts[..] {
+            ["noop"] => {
+                instructions.push(Instruction::Noop);
             }
-
-        visited.insert((knots.last().unwrap().x, knots.last().unwrap().y));
+            ["addx", value] => {
+                instructions.push(Instruction::Addx(value.parse().unwrap()));
+            }
+            _ => {}
         }
     }
-    visited.len()
+    instructions
 }
 
-fn solve(lines: &[String]) -> usize {
+fn solution(instructions: &Vec<Instruction>) -> i32 {
+    let read_points = [20, 60, 100, 140, 180, 220];
+    let mut x = 1;
+    let mut cycle = 1;
+    let mut strength = 0;
+
+    for instr in instructions {
+        match instr {
+            Instruction::Noop => {
+                if read_points.contains(&cycle) {
+                    strength += cycle * x;
+                }
+                cycle += 1;
+            }
+            Instruction::Addx(value) => {
+                for _ in 0..2 {
+                    if read_points.contains(&cycle) {
+                        strength += cycle * x;
+                    }
+                    cycle += 1;
+                }
+                x += value;
+            }
+        }
+    }
+    strength
+}
+
+fn solve(lines: &[String]) -> i32 {
     solution(&parse_input(lines))
 }
 
@@ -83,81 +62,19 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
+    use std::{fs::File, io::BufReader};
+
     use super::*;
 
     #[test]
-    fn test_follow() {
-        let mut head;
-        let mut tail;
-
-        head = Point { x: 0, y: 0 };
-        tail = Point { x: 0, y: 0 };
-        head.walk(&Direction::Up);
-        tail.follow(&head);
-        assert_eq!(tail, Point { x: 0, y: 0 });
-
-        head = Point { x: 0, y: 0 };
-        tail = Point { x: 0, y: 0 };
-        head.walk(&Direction::Up);
-        head.walk(&Direction::Up);
-        tail.follow(&head);
-        assert_eq!(tail, Point { x: 0, y: 1 });
-
-        head = Point { x: 0, y: 0 };
-        tail = Point { x: 0, y: 0 };
-        head.walk(&Direction::Up);
-        head.walk(&Direction::Right);
-        tail.follow(&head);
-        assert_eq!(tail, Point { x: 0, y: 0 });
-
-        head = Point { x: 0, y: 0 };
-        tail = Point { x: 0, y: 0 };
-        head.walk(&Direction::Up);
-        head.walk(&Direction::Right);
-        head.walk(&Direction::Up);
-        tail.follow(&head);
-        assert_eq!(tail, Point { x: 1, y: 1 });
-    }
-
-    #[test]
     fn test_example() {
-        let lines = "
-            R 4
-            U 4
-            L 3
-            D 1
-            R 4
-            D 1
-            L 5
-            R 2
-        ";
+        let reader = BufReader::new(File::open("example.txt").unwrap());
 
-        let lines: Vec<String> = lines
+        let lines: Vec<String> = reader
             .lines()
-            .map(|x| x.trim().to_string())
+            .map(|x| x.unwrap().trim().to_string())
             .filter(|x| !x.is_empty())
             .collect();
-        assert_eq!(solve(&lines), 1);
-    }
-
-    #[test]
-    fn test_example_two() {
-        let lines = "
-            R 5
-            U 8
-            L 8
-            D 3
-            R 17
-            D 10
-            L 25
-            U 20
-        ";
-
-        let lines: Vec<String> = lines
-            .lines()
-            .map(|x| x.trim().to_string())
-            .filter(|x| !x.is_empty())
-            .collect();
-        assert_eq!(solve(&lines), 36);
+        assert_eq!(solve(&lines), 13140);
     }
 }
