@@ -53,7 +53,7 @@ fn parse_input(lines: &[String]) -> Vec<(Direction, u32)> {
 
 
 fn solution(steps: &Vec<(Direction, u32)>) -> usize {
-    let rope_length = 2;
+    let rope_length = 10;
     let mut knots: Vec<Point> = vec![Point { x:0, y:0 }; rope_length];
     let mut visited: HashSet<(i32, i32)> = HashSet::new();
 
