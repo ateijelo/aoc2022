@@ -81,12 +81,21 @@ fn successors(pos: &Pos, map: &[Vec<u32>]) -> Vec<(Pos, usize)> {
 }
 
 fn solution(input: Input) -> usize {
-    let result = dijkstra(
-        &input.start,
-        |p| successors(p, &input.map),
-        |p| *p == input.end,
-    );
-    result.expect("no path found").1
+    let mut min = 4000;
+    for (y, row) in input.map.iter().enumerate() {
+        for (x, col) in row.iter().enumerate() {
+            if *col != 0 { continue; }
+            let Some(result) = dijkstra(
+                &Pos { x: x as i32, y: y as i32 },
+                |p| successors(p, &input.map),
+                |p| *p == input.end,
+            ) else { continue };
+            println!("From ({}, {}): {}", x, y, result.1);
+            min = std::cmp::min(min, result.1);
+        }
+    }
+
+    min
 }
 
 fn solve(lines: &[String]) -> usize {
@@ -117,6 +126,6 @@ mod tests {
             .map(|x| x.unwrap().trim().to_string())
             .filter(|x| !x.is_empty())
             .collect();
-        assert_eq!(solve(&lines), 31);
+        assert_eq!(solve(&lines), 29);
     }
 }
