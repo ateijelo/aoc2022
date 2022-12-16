@@ -1,101 +1,124 @@
 use std::io::{self, BufRead};
 
-use pathfinding::prelude::dijkstra;
+use nom::branch::alt;
+use nom::bytes::complete::tag;
+use nom::character::complete::u32;
+use nom::multi::separated_list0;
+use nom::sequence::delimited;
+use nom::IResult;
 
-struct Input {
-    map: Vec<Vec<u32>>,
-    start: Pos,
-    end: Pos,
+#[derive(Debug, Clone)]
+enum Item {
+    Number(u32),
+    List(Vec<Item>),
 }
 
-fn parse_input(lines: &[String]) -> Input {
-    let mut input = Input {
-        map: vec![],
-        start: Pos { x: 0, y: 0 },
-        end: Pos { x: 0, y: 0 },
+fn number(input: &str) -> IResult<&str, Item> {
+    let result = u32(input);
+    result.map(|(input, num)| (input, Item::Number(num)))
+}
+
+fn list(input: &str) -> IResult<&str, Item> {
+    let result = delimited(tag("["), items, tag("]"))(input);
+    result.map(|(input, items)| (input, Item::List(items)))
+}
+
+fn item(input: &str) -> IResult<&str, Item> {
+    alt((number, list))(input)
+}
+
+fn items(input: &str) -> IResult<&str, Vec<Item>> {
+    separated_list0(tag(","), item)(input)
+}
+
+#[derive(Debug)]
+struct PacketPair(Item, Item);
+
+fn parse_input(lines: &[String]) -> Vec<PacketPair> {
+    let mut result = vec![];
+    let mut p = PacketPair(Item::Number(0), Item::Number(0));
+    for (i, line) in lines.iter().enumerate() {
+        let l = line.replace(' ', "");
+        if i % 3 == 0 {
+            p.0 = list(&l).unwrap().1;
+        }
+        if i % 3 == 1 {
+            p.1 = list(&l).unwrap().1;
+        }
+        if i % 3 == 2 {
+            result.push(p);
+            p = PacketPair(Item::Number(0), Item::Number(0));
+        }
+
+    }
+    result.push(p);
+    result
+}
+
+fn compare_nums(left: &u32, right: &u32) -> i32 {
+    if left < right {
+        return 1;
     };
-    for (y, line) in lines.iter().enumerate() {
-        let mut row: Vec<u32> = vec![];
-        for (x, c) in line.chars().enumerate() {
-            let v = match c {
-                'S' => {
-                    input.start = Pos {
-                        x: x as i32,
-                        y: y as i32,
-                    };
-                    0
+    if right < left {
+        return -1;
+    };
+    0
+}
+
+fn compare_lists(left: &Vec<Item>, right: &Vec<Item>) -> i32 {
+    // first, compare each item
+    for i in 0..std::cmp::min(left.len(), right.len()) {
+        let c = compare_items(&left[i], &right[i]);
+        if c != 0 {
+            return c;
+        }
+    }
+    // if we reached this point, we compare list lengths
+    if left.len() < right.len() { return 1; }
+    if left.len() > right.len() { return -1; }
+    0
+}
+
+fn compare_items(left: &Item, right: &Item) -> i32 {
+    match left {
+        Item::Number(l_num) => {
+            match right {
+                Item::Number(r_num) => {
+                    compare_nums(l_num, r_num)
                 }
-                'E' => {
-                    input.end = Pos {
-                        x: x as i32,
-                        y: y as i32,
-                    };
-                    'z' as u32 - 'a' as u32
+                Item::List(r_list) => {
+                    let l_list = vec![left.clone()];
+                    compare_lists(&l_list, r_list)
                 }
-                'a'..='z' => c as u32 - 'a' as u32,
-                _ => 0,
-            };
-            row.push(v);
+            }
         }
-        input.map.push(row);
-    }
-    input
-}
-
-#[derive(Clone, Eq, PartialEq, Hash, Debug)]
-struct Pos {
-    x: i32,
-    y: i32,
-}
-
-fn successors(pos: &Pos, map: &[Vec<u32>]) -> Vec<(Pos, usize)> {
-    let height = map.len() as i32;
-    let width = map[0].len() as i32;
-    let mut v: Vec<(Pos, usize)> = vec![];
-    for (dx, dy) in [(-1, 0), (0, -1), (1, 0), (0, 1)] {
-        if pos.x + dx >= width {
-            continue;
-        }
-        if pos.y + dy >= height {
-            continue;
-        }
-        if pos.x + dx < 0 {
-            continue;
-        }
-        if pos.y + dy < 0 {
-            continue;
-        }
-        let new_pos = Pos {
-            x: pos.x + dx,
-            y: pos.y + dy,
-        };
-        let mut cost = 4000;
-        let current_height = map[pos.y as usize][pos.x as usize];
-        let neighbor_height = map[new_pos.y as usize][new_pos.x as usize];
-        if current_height + 1 >= neighbor_height {
-            cost = 1;
-        }
-        v.push((new_pos, cost));
-    }
-    v
-}
-
-fn solution(input: Input) -> usize {
-    let mut min = 4000;
-    for (y, row) in input.map.iter().enumerate() {
-        for (x, col) in row.iter().enumerate() {
-            if *col != 0 { continue; }
-            let Some(result) = dijkstra(
-                &Pos { x: x as i32, y: y as i32 },
-                |p| successors(p, &input.map),
-                |p| *p == input.end,
-            ) else { continue };
-            println!("From ({}, {}): {}", x, y, result.1);
-            min = std::cmp::min(min, result.1);
+        Item::List(l_list) => {
+            match right {
+                Item::Number(_) => {
+                    let r_list = vec![right.clone()];
+                    compare_lists(l_list, &r_list)
+                }
+                Item::List(r_list) => {
+                    compare_lists(l_list, r_list)
+                }
+            }
         }
     }
+}
 
-    min
+fn compare_pairs(pair: &PacketPair) -> i32 {
+    compare_items(&pair.0, &pair.1)
+}
+
+fn solution(pairs: Vec<PacketPair>) -> usize {
+    let mut sum = 0;
+    for (i, pair) in pairs.iter().enumerate() {
+        if compare_pairs(pair) > 0 {
+            // pair index starts at 1
+            sum += i + 1;
+        }
+    }
+    sum
 }
 
 fn solve(lines: &[String]) -> usize {
@@ -124,8 +147,7 @@ mod tests {
         let lines: Vec<String> = reader
             .lines()
             .map(|x| x.unwrap().trim().to_string())
-            .filter(|x| !x.is_empty())
             .collect();
-        assert_eq!(solve(&lines), 29);
+        assert_eq!(solve(&lines), 13);
     }
 }
