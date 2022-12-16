@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::io::{self, BufRead};
 
 use nom::branch::alt;
@@ -7,7 +8,7 @@ use nom::multi::separated_list0;
 use nom::sequence::delimited;
 use nom::IResult;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 enum Item {
     Number(u32),
     List(Vec<Item>),
@@ -31,94 +32,81 @@ fn items(input: &str) -> IResult<&str, Vec<Item>> {
     separated_list0(tag(","), item)(input)
 }
 
-#[derive(Debug)]
-struct PacketPair(Item, Item);
-
-fn parse_input(lines: &[String]) -> Vec<PacketPair> {
+fn parse_input(lines: &[String]) -> Vec<Item> {
     let mut result = vec![];
-    let mut p = PacketPair(Item::Number(0), Item::Number(0));
-    for (i, line) in lines.iter().enumerate() {
+    for line in lines {
         let l = line.replace(' ', "");
-        if i % 3 == 0 {
-            p.0 = list(&l).unwrap().1;
-        }
-        if i % 3 == 1 {
-            p.1 = list(&l).unwrap().1;
-        }
-        if i % 3 == 2 {
-            result.push(p);
-            p = PacketPair(Item::Number(0), Item::Number(0));
-        }
-
+        if l.is_empty() {
+            continue;
+        };
+        result.push(list(&l).unwrap().1);
     }
-    result.push(p);
     result
 }
 
-fn compare_nums(left: &u32, right: &u32) -> i32 {
+fn compare_nums(left: &u32, right: &u32) -> Ordering {
     if left < right {
-        return 1;
+        return Ordering::Less;
     };
     if right < left {
-        return -1;
+        return Ordering::Greater;
     };
-    0
+    Ordering::Equal
 }
 
-fn compare_lists(left: &Vec<Item>, right: &Vec<Item>) -> i32 {
+fn compare_lists(left: &Vec<Item>, right: &Vec<Item>) -> Ordering {
     // first, compare each item
     for i in 0..std::cmp::min(left.len(), right.len()) {
         let c = compare_items(&left[i], &right[i]);
-        if c != 0 {
+        if c != Ordering::Equal {
             return c;
         }
     }
     // if we reached this point, we compare list lengths
-    if left.len() < right.len() { return 1; }
-    if left.len() > right.len() { return -1; }
-    0
+    if left.len() < right.len() {
+        return Ordering::Less;
+    }
+    if left.len() > right.len() {
+        return Ordering::Greater;
+    }
+    Ordering::Equal
 }
 
-fn compare_items(left: &Item, right: &Item) -> i32 {
+fn compare_items(left: &Item, right: &Item) -> Ordering {
     match left {
-        Item::Number(l_num) => {
-            match right {
-                Item::Number(r_num) => {
-                    compare_nums(l_num, r_num)
-                }
-                Item::List(r_list) => {
-                    let l_list = vec![left.clone()];
-                    compare_lists(&l_list, r_list)
-                }
+        Item::Number(l_num) => match right {
+            Item::Number(r_num) => compare_nums(l_num, r_num),
+            Item::List(r_list) => {
+                let l_list = vec![left.clone()];
+                compare_lists(&l_list, r_list)
             }
-        }
-        Item::List(l_list) => {
-            match right {
-                Item::Number(_) => {
-                    let r_list = vec![right.clone()];
-                    compare_lists(l_list, &r_list)
-                }
-                Item::List(r_list) => {
-                    compare_lists(l_list, r_list)
-                }
+        },
+        Item::List(l_list) => match right {
+            Item::Number(_) => {
+                let r_list = vec![right.clone()];
+                compare_lists(l_list, &r_list)
             }
-        }
+            Item::List(r_list) => compare_lists(l_list, r_list),
+        },
     }
 }
 
-fn compare_pairs(pair: &PacketPair) -> i32 {
-    compare_items(&pair.0, &pair.1)
-}
+fn solution(mut items: Vec<Item>) -> usize {
+    let div2 = list("[[2]]").unwrap().1;
+    let div6 = list("[[6]]").unwrap().1;
+    items.push(div2);
+    items.push(div6);
+    items.sort_by(compare_items);
 
-fn solution(pairs: Vec<PacketPair>) -> usize {
-    let mut sum = 0;
-    for (i, pair) in pairs.iter().enumerate() {
-        if compare_pairs(pair) > 0 {
-            // pair index starts at 1
-            sum += i + 1;
+    let div2 = list("[[2]]").unwrap().1;
+    let div6 = list("[[6]]").unwrap().1;
+    let mut result = 1;
+    for (i, item) in items.iter().enumerate() {
+        if *item == div2 || *item == div6 {
+            result *= i + 1;
         }
     }
-    sum
+    result
 }
 
 fn solve(lines: &[String]) -> usize {
@@ -128,9 +116,6 @@ fn solve(lines: &[String]) -> usize {
 fn main() {
     let lines = io::stdin().lock().lines();
     let lines: Vec<String> = lines.map(|line| line.unwrap()).collect();
-    // for line in solve(&lines) {
-    //     println!("{}", line);
-    // }
     println!("{}", solve(&lines));
 }
 
@@ -140,14 +125,24 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn test_example() {
-        let reader = BufReader::new(File::open("example.txt").unwrap());
+    fn test_file(filename: &str, solution: &str) {
+        let reader = BufReader::new(File::open(filename).unwrap());
 
         let lines: Vec<String> = reader
             .lines()
             .map(|x| x.unwrap().trim().to_string())
+            .filter(|x| !x.is_empty())
             .collect();
-        assert_eq!(solve(&lines), 13);
+        assert_eq!(solve(&lines).to_string(), solution);
+    }
+
+    #[test]
+    fn test_example() {
+        test_file("example.txt", "140");
+    }
+
+    #[test]
+    fn test_input() {
+        test_file("input.txt", "24805");
     }
 }
