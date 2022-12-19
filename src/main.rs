@@ -118,8 +118,21 @@ fn parse_input(lines: &[String]) -> Cave {
             min_y = std::cmp::min(min_y, y);
         }
     }
-    let width = max_x - min_x + 1;
+
+    // for part 2
+    max_y += 2;
     let height = max_y - min_y + 1;
+
+    min_x -= height;
+    max_x += height;
+    let width = max_x - min_x + 1;
+
+    // add floor
+    walls.push(vec![
+        Point { x: min_x, y: max_y },
+        Point { x: max_x, y: max_y },
+    ]);
+
     let mut cave = Cave {
         map: vec![" ".repeat(width as usize); height as usize],
         origin: Point { x: min_x, y: min_y },
@@ -165,15 +178,17 @@ fn fall(cave: &mut Cave) -> Option<Point> {
             if cave.is_void_at(&next) {
                 // println!("cave is void at {:?}", &next);
                 return None;
+            } else {
+                // println!("cave is not void at {:?}", next);
             }
-            // else { println!("cave is not void at {:?}", next); }
             if cave.is_empty_at(&next) {
                 // println!("cave is empty at {:?}", &next);
                 ball = next;
                 moved = true;
                 break;
+            } else {
+                // println!("cave is not empty at {:?}", next);
             }
-            // else { println!("cave is not empty at {:?}", next); }
         }
         // tried 3 directions and it didn't move
         if !moved {
@@ -188,6 +203,9 @@ fn solution(cave: &mut Cave) -> usize {
     while let Some(p) = fall(cave) {
         cave.set(&p, ".");
         c += 1;
+        if p.y == 0 {
+            break;
+        }
     }
     for line in &cave.map {
         println!("{}", line);
@@ -224,11 +242,11 @@ mod tests {
 
     #[test]
     fn test_example() {
-        test_file("example.txt", "24");
+        test_file("example.txt", "93");
     }
 
     #[test]
     fn test_input() {
-        test_file("input.txt", "805");
+        test_file("input.txt", "25161");
     }
 }
