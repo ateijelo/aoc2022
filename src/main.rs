@@ -186,37 +186,57 @@ use interval::interval_set::*;
 
 fn solution(sensors: Vec<Sensor>, row: i32) -> usize {
     let mut coverage = 0;
-    let target_row = row;
     let mut beacons_on_row = HashSet::new();
-    let mut cover = vec![].to_interval_set();
-    for sensor in sensors {
-        let beacon_distance = sensor.position.manhattan_distance(&sensor.beacon);
-        let row_distance = i32::abs(sensor.position.y - target_row);
-        // println!(
-        //     "{:?}, beacon_distance={}, row_distance={}",
-        //     sensor, beacon_distance, row_distance
-        // );
-        if row_distance <= beacon_distance {
-            let interval = vec![(
-                sensor.position.x - beacon_distance + row_distance,
-                sensor.position.x + beacon_distance - row_distance,
-            )]
-            .to_interval_set();
+    let mut edges: Vec<Line> = vec![];
 
-            println!("adding interval: {}", interval);
-            cover = cover.union(&interval);
-        }
-        if sensor.beacon.y == target_row {
-            beacons_on_row.insert(sensor.beacon.x);
+    // let's get a list of candidate Y's
+    let mut candidate_ys = HashSet::new();
+    for sensor in sensors.iter() {
+        let sx = sensor.position.x;
+        let sy = sensor.position.y;
+        let beacon_distance = sensor.position.manhattan_distance(&sensor.beacon);
+        let bd = beacon_distance + 1;
+
+        edges.push(Line::from_tuples((sx + bd, sy), (sx + 1, sy + bd - 1)));
+        edges.push(Line::from_tuples((sx, sy + bd), (sx - bd + 1, sy + 1)));
+        edges.push(Line::from_tuples((sx - bd, sy), (sx - 1, sy - bd + 1)));
+        edges.push(Line::from_tuples((sx, sy - bd), (sx + bd - 1, sy - 1)));
+    }
+    for i in edges.iter() {
+        for j in edges.iter() {
+            if let Some(x) = i.intersection(j) {
+                let y = x.from.y;
+                if y < 0 { continue; }
+                if y > 4000000 { continue; }
+                candidate_ys.insert(x.from.y);
+            }
         }
     }
-    println!("result:");
-    println!("intervals: {}", cover);
-    println!("beacons on row: {:?}", beacons_on_row);
-    for i in cover.iter() {
-        coverage += i.upper() - i.lower() + 1;
+
+    for target_row in candidate_ys {
+        let mut cover = vec![].to_interval_set();
+        for sensor in sensors.iter() {
+            let beacon_distance = sensor.position.manhattan_distance(&sensor.beacon);
+            let row_distance = i32::abs(sensor.position.y - target_row);
+            if row_distance <= beacon_distance {
+                let interval = vec![(
+                    sensor.position.x - beacon_distance + row_distance,
+                    sensor.position.x + beacon_distance - row_distance,
+                )]
+                .to_interval_set();
+
+                cover = cover.union(&interval);
+            }
+            if sensor.beacon.y == target_row {
+                beacons_on_row.insert(sensor.beacon.x);
+            }
+        }
+        if cover.interval_count() == 1 {
+            continue;
+        }
+        println!("cover: {}, y={}", cover, target_row);
     }
-    coverage as usize - beacons_on_row.len()
+    0
 }
 
 fn solve(lines: &[String], row: i32) -> usize {
