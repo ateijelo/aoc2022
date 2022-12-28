@@ -1,253 +1,213 @@
+use pathfinding::prelude::dijkstra;
 use std::{
-    cmp::{max, min},
-    collections::HashSet,
-    env,
-    io::{self, BufRead},
-    ops::{Add, Sub},
+    collections::{HashMap, HashSet},
+    fmt::Debug,
+    io::{self, BufRead}, cmp::max,
 };
 
 use regex::Regex;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct Point {
-    x: i32,
-    y: i32,
-}
-
-#[derive(Clone, Copy, Debug)]
-struct Dir {
-    x: i32,
-    y: i32,
-}
-
-impl Point {
-    fn manhattan_distance(&self, other: &Point) -> i32 {
-        i32::abs(self.x - other.x) + i32::abs(self.y - other.y)
-    }
-}
-
-impl Sub for Point {
-    type Output = Point;
-
-    fn sub(self, rhs: Self) -> Self::Output {
-        Point {
-            x: self.x - rhs.x,
-            y: self.y - rhs.y,
-        }
-    }
-}
-
-impl Add<&Dir> for Point {
-    type Output = Point;
-
-    fn add(self, rhs: &Dir) -> Self::Output {
-        Point {
-            x: self.x + rhs.x,
-            y: self.y + rhs.y,
-        }
-    }
-}
-
 #[derive(Debug)]
-struct Sensor {
-    position: Point,
-    beacon: Point,
+struct Valve {
+    // name: String,
+    rate: u32,
+    neighbors: Vec<String>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct Line {
-    from: Point,
-    to: Point,
-}
+type Graph = HashMap<String, Valve>;
+type DistanceMap = HashMap<(String, String), Option<usize>>;
 
-impl Line {
-    fn new(from: Point, to: Point) -> Self {
-        let w = to.x - from.x;
-        let h = to.y - from.y;
-        let mut t = to;
-        t.x = from.x + i32::signum(w) * min(i32::abs(w), i32::abs(h));
-        t.y = from.y + i32::signum(h) * min(i32::abs(w), i32::abs(h));
-        Self { from, to: t }
-    }
-
-    fn m(&self) -> i32 {
-        if self.to.x == self.from.x {
-            assert!(self.to.y == self.from.y);
-            return 1;
-        }
-        (self.to.y - self.from.y) / (self.to.x - self.from.x)
-    }
-
-    fn n(&self) -> i32 {
-        self.from.y - self.m() * self.from.x
-    }
-
-    fn from_tuples(from: (i32, i32), to: (i32, i32)) -> Self {
-        let from = Point {
-            x: from.0,
-            y: from.1,
-        };
-        let to = Point { x: to.0, y: to.1 };
-        Self::new(from, to)
-    }
-
-    fn crosses(&self, other: &Line) -> bool {
-        let ofx_proj = self.m() * other.from.x + self.n();
-        let dfx = i32::signum(other.from.y - ofx_proj);
-
-        let otx_proj = self.m() * other.to.x + self.n();
-        let dtx = i32::signum(other.to.y - otx_proj);
-
-        if dfx == 0 || dtx == 0 {
-            return true;
-        }
-        dfx != dtx
-    }
-
-    fn intersection(&self, other: &Line) -> Option<Line> {
-        let sfx = min(self.from.x, self.to.x);
-        let stx = max(self.from.x, self.to.x);
-        let ofx = min(other.from.x, other.to.x);
-        let otx = max(other.from.x, other.to.x);
-
-        if other.m() == self.m() {
-            // lines are parallel
-            let self_x = vec![(sfx, stx)].to_interval_set();
-            let other_x = vec![(ofx, otx)].to_interval_set();
-            let x_intersection = self_x.intersection(&other_x);
-            if x_intersection.interval_count() == 0 {
-                return None;
-            }
-            if self.n() == other.n() {
-                let rfx = x_intersection.lower() as i32;
-                let rtx = x_intersection.upper() as i32;
-                let rfy = self.m() * rfx + self.n();
-                let rty = self.m() * rtx + self.n();
-                let rf = Point { x: rfx, y: rfy };
-                let rt = Point { x: rtx, y: rty };
-                return Some(Line::new(rf, rt));
-            }
-            return None;
-        }
-
-        // if !self.crosses(other) && !other.crosses(self) {
-        //     return None;
-        // }
-
-        let ix = (other.n() - self.n()) as f64 / (self.m() - other.m()) as f64;
-        let iy = self.m() as f64 * ix + self.n() as f64;
-
-        if ix.fract() > 0.25 {
-            return None;
-        }
-        if (sfx as f64) > ix {
-            return None;
-        };
-        if (stx as f64) < ix {
-            return None;
-        };
-        if (ofx as f64) > ix {
-            return None;
-        };
-        if (otx as f64) < ix {
-            return None;
-        };
-
-        let p = Point {
-            x: ix as i32,
-            y: iy as i32,
-        };
-        Some(Line::new(p, p))
-    }
-}
-
-fn parse_input(lines: &[String]) -> Vec<Sensor> {
-    let mut sensors = vec![];
-    let re = Regex::new(r"Sensor at x=(?P<sx>-?\d+), y=(?P<sy>-?\d+): closest beacon is at x=(?P<bx>-?\d+), y=(?P<by>-?\d+)").unwrap();
+fn parse_input(lines: &[String]) -> Graph {
+    let mut valves = HashMap::new();
+    let re = Regex::new(r"Valve (?P<valve>\w+) has flow rate=(?P<rate>\d+); tunnels? leads? to valves? (?P<neighbors>[A-Z, ]+)")
+        .unwrap();
     for line in lines {
         let caps = re.captures(line).unwrap();
-        let sensor = Sensor {
-            position: Point {
-                x: caps.name("sx").unwrap().as_str().parse().unwrap(),
-                y: caps.name("sy").unwrap().as_str().parse().unwrap(),
+        let name = caps.name("valve").unwrap().as_str().to_owned();
+        let rate: u32 = caps.name("rate").unwrap().as_str().parse().unwrap();
+        let neighbors: Vec<String> = caps
+            .name("neighbors")
+            .unwrap()
+            .as_str()
+            .split(", ")
+            .map(String::from)
+            .collect();
+        valves.insert(
+            name.clone(),
+            Valve {
+                rate,
+                neighbors,
             },
-            beacon: Point {
-                x: caps.name("bx").unwrap().as_str().parse().unwrap(),
-                y: caps.name("by").unwrap().as_str().parse().unwrap(),
-            },
-        };
-        sensors.push(sensor);
+        );
     }
-    sensors
+    // println!("valves: {:?}", valves);
+    valves
 }
 
-use gcollections::ops::*;
-use interval::interval_set::*;
+// fn walk(
+//     time: usize,
+//     graph: &Graph,
+//     valve: String,
+//     visited: &mut HashSet<String>,
+//     opened: &mut HashSet<String>,
+// ) {
+//     let indent = " ".repeat(time);
+//     // println!("visited: {:?}", visited);
+//     visited.insert(valve.clone());
+//     let v = graph.get(&valve).unwrap();
+//     for neighbor in &v.neighbors {
+//         // let neighbor = graph.get(&name).expect(&format!("graph should have valve named {}", name));
+//         if visited.contains(neighbor) {
+//             continue;
+//         }
+//         println!("{}going from {} to {}", indent, valve, neighbor);
+//         walk(time + 1, graph, neighbor.clone(), visited, opened);
+//         println!("{}returning from {} to {}", indent, neighbor, valve);
+//     }
+//     visited.remove(&valve);
+//     // let actions = ... visit neighbors & open current valve if rate != 0
+//     // for action in actions {
+//     //     walk ( state + action );
+//     // }
+// }
 
-fn solution(sensors: Vec<Sensor>, row: i32) -> usize {
-    let mut coverage = 0;
-    let mut beacons_on_row = HashSet::new();
-    let mut edges: Vec<Line> = vec![];
+fn compute_pressure_release(path: &Vec<String>, graph: &Graph, distance_map: &DistanceMap) -> u32 {
+    let mut release = 0u32;
+    let mut rate = 0;
+    let mut time = 0;
+    for i in 1..path.len() {
+        let f = path[i - 1].clone();
+        let t = path[i].clone();
+        let d = distance_map.get(&(f, t.clone())).unwrap().unwrap() as u32;
 
-    // let's get a list of candidate Y's
-    let mut candidate_ys = HashSet::new();
-    for sensor in sensors.iter() {
-        let sx = sensor.position.x;
-        let sy = sensor.position.y;
-        let beacon_distance = sensor.position.manhattan_distance(&sensor.beacon);
-        let bd = beacon_distance + 1;
+        // while I walk from `f` to `t`, release increases by rate + distance
+        time += d;
+        release += rate * d;
 
-        edges.push(Line::from_tuples((sx + bd, sy), (sx + 1, sy + bd - 1)));
-        edges.push(Line::from_tuples((sx, sy + bd), (sx - bd + 1, sy + 1)));
-        edges.push(Line::from_tuples((sx - bd, sy), (sx - 1, sy - bd + 1)));
-        edges.push(Line::from_tuples((sx, sy - bd), (sx + bd - 1, sy - 1)));
+        // when I arrive to `t`, I spend 1 minute opening the valve
+        time += 1;
+        release += rate;
+
+        // and rate increases by `t`'s rate
+        let valve = graph.get(&t).unwrap();
+        rate += valve.rate;
     }
-    for i in edges.iter() {
-        for j in edges.iter() {
-            if let Some(x) = i.intersection(j) {
-                let y = x.from.y;
-                if y < 0 { continue; }
-                if y > 4000000 { continue; }
-                candidate_ys.insert(x.from.y);
-            }
-        }
+    // if we have time to spare, release will increase until we get to 30
+    if time < 30 {
+        release += rate * (30 - time)
     }
+    release
+}
 
-    for target_row in candidate_ys {
-        let mut cover = vec![].to_interval_set();
-        for sensor in sensors.iter() {
-            let beacon_distance = sensor.position.manhattan_distance(&sensor.beacon);
-            let row_distance = i32::abs(sensor.position.y - target_row);
-            if row_distance <= beacon_distance {
-                let interval = vec![(
-                    sensor.position.x - beacon_distance + row_distance,
-                    sensor.position.x + beacon_distance - row_distance,
-                )]
-                .to_interval_set();
-
-                cover = cover.union(&interval);
-            }
-            if sensor.beacon.y == target_row {
-                beacons_on_row.insert(sensor.beacon.x);
-            }
-        }
-        if cover.interval_count() == 1 {
+fn walk(
+    path: &mut Vec<String>,
+    time: u32,
+    vector: &mut [String],
+    graph: &Graph,
+    distance_map: &DistanceMap,
+    result: &mut u32,
+) {
+    let r = compute_pressure_release(path, graph, distance_map);
+    *result = max(*result, r);
+    if path.len() == vector.len() {
+        // println!("{:?}", path);
+        return;
+    }
+    for i in 0..vector.len() {
+        if path.contains(&vector[i]) {
             continue;
         }
-        println!("cover: {}, y={}", cover, target_row);
+
+        let from = path.last().unwrap().clone();
+        let to = vector[i].clone();
+
+        // we spend `distance` minutes to get to the valve
+        let key = (from, to.clone());
+        let mut time_spent = distance_map.get(&key).unwrap().unwrap() as u32;
+        // and 1 minute in this valve:
+        time_spent += 1;
+
+        if time + time_spent > 30 {
+            continue;
+        }
+
+        path.push(to.clone());
+        walk(
+            path,
+            time + time_spent,
+            vector,
+            graph,
+            distance_map,
+            result,
+        );
+        path.pop();
     }
-    0
 }
 
-fn solve(lines: &[String], row: i32) -> usize {
-    solution(parse_input(lines), row)
+fn successors(valve: &str, graph: &Graph) -> Vec<(String, usize)> {
+    if let Some(v) = graph.get(valve) {
+        return v
+            .neighbors
+            .iter()
+            .map(|neighbor| (neighbor.to_string(), 1))
+            .collect();
+    }
+    vec![]
+}
+
+fn distance_map(
+    graph: &Graph,
+    skip: &HashSet<&String>,
+) -> HashMap<(String, String), Option<usize>> {
+    let mut result = HashMap::new();
+
+    for a in graph.keys() {
+        for b in graph.keys() {
+            if skip.contains(a) {
+                continue;
+            };
+            if skip.contains(b) {
+                continue;
+            };
+            let distance =
+                dijkstra(a, |valve| successors(valve, graph), |valve| valve == b).map(|r| r.1);
+            result.insert((a.clone(), b.clone()), distance);
+        }
+    }
+    result
+}
+
+fn solution(graph: Graph) -> u32 {
+    let mut skip = HashSet::new();
+    let mut good_valves = vec![];
+    for valve in graph.keys() {
+        if valve != "AA" && graph.get(valve).unwrap().rate == 0 {
+            skip.insert(valve);
+        } else {
+            good_valves.push(valve.clone());
+        }
+    }
+    let dm = distance_map(&graph, &skip);
+    // for item in dm.iter() {
+    //     println!("{:?}", item);
+    // }
+    let mut path = vec!["AA".to_owned()];
+    let mut result = 0;
+    walk(&mut path, 0, &mut good_valves, &graph, &dm, &mut result);
+    // for p in good_valves.iter().filter(|v| *v != "AA").permutations(good_valves.len() - 1) {
+    //     println!("{:?}", p);
+    // }
+    result
+}
+
+fn solve(lines: &[String]) -> u32 {
+    solution(parse_input(lines))
 }
 
 fn main() {
     let lines = io::stdin().lock().lines();
     let lines: Vec<String> = lines.map(|line| line.unwrap()).collect();
-    let args: Vec<String> = env::args().collect();
-    println!("{}", solve(&lines, args[1].parse().unwrap()));
+    println!("{}", solve(&lines));
 }
 
 #[cfg(test)]
@@ -256,7 +216,7 @@ mod tests {
 
     use super::*;
 
-    fn test_file(filename: &str, row: i32, solution: &str) {
+    fn test_file(filename: &str, solution: &str) {
         let reader = BufReader::new(File::open(filename).unwrap());
 
         let lines: Vec<String> = reader
@@ -264,134 +224,16 @@ mod tests {
             .map(|x| x.unwrap().trim().to_string())
             .filter(|x| !x.is_empty())
             .collect();
-        assert_eq!(solve(&lines, row).to_string(), solution);
+        assert_eq!(solve(&lines).to_string(), solution);
     }
 
     #[test]
     fn test_example() {
-        test_file("example.txt", 10, "26");
+        test_file("example.txt", "1651");
     }
 
     #[test]
     fn test_input() {
-        test_file("input.txt", 2000000, "5870800");
-    }
-
-    #[test]
-    fn test_line() {
-        let l = Line::new(Point { x: 0, y: 0 }, Point { x: 10, y: 10 });
-        assert_eq!(l.to, Point { x: 10, y: 10 });
-
-        let l = Line::new(Point { x: 0, y: 0 }, Point { x: 5, y: 10 });
-        assert_eq!(l.to, Point { x: 5, y: 5 });
-
-        let l = Line::new(Point { x: 0, y: 0 }, Point { x: -5, y: 10 });
-        assert_eq!(l.to, Point { x: -5, y: 5 });
-
-        let l = Line::new(Point { x: 0, y: 0 }, Point { x: -5, y: -5 });
-        assert_eq!(l.to, Point { x: -5, y: -5 });
-
-        let l = Line::new(Point { x: 0, y: 0 }, Point { x: -10, y: -5 });
-        assert_eq!(l.to, Point { x: -5, y: -5 });
-    }
-
-    #[test]
-    fn test_intersection() {
-        let l1 = Line::from_tuples((0, 0), (10, 10));
-        let l2 = Line::from_tuples((5, 5), (15, 15));
-        assert_eq!(
-            l1.intersection(&l2).unwrap(),
-            Line::from_tuples((5, 5), (10, 10))
-        );
-
-        let l1 = Line::from_tuples((0, 0), (10, 10));
-        let l2 = Line::from_tuples((5, 5), (5, 5));
-        assert_eq!(
-            l1.intersection(&l2).unwrap(),
-            Line::from_tuples((5, 5), (5, 5))
-        );
-
-        let l1 = Line::new(Point { x: 0, y: 0 }, Point { x: 5, y: 5 });
-        let l2 = Line::new(Point { x: 6, y: 6 }, Point { x: 10, y: 10 });
-        assert_eq!(l1.intersection(&l2), None);
-
-        let l1 = Line::from_tuples((0, 0), (5, 5));
-        let l2 = Line::from_tuples((5, 5), (10, 10));
-        assert_eq!(
-            l1.intersection(&l2).unwrap(),
-            Line::from_tuples((5, 5), (5, 5))
-        );
-
-        let l1 = Line::from_tuples((0, 0), (5, -5));
-        let l2 = Line::from_tuples((5, -5), (10, -10));
-        assert_eq!(
-            l1.intersection(&l2).unwrap(),
-            Line::from_tuples((5, -5), (5, -5))
-        );
-
-        let l1 = Line::from_tuples((-2, 2), (10, -10));
-        let l2 = Line::from_tuples((-10, 10), (2, -2));
-        assert_eq!(
-            l1.intersection(&l2).unwrap(),
-            Line::from_tuples((-2, 2), (2, -2))
-        );
-
-        let l1 = Line::from_tuples((-2, 2), (10, -10));
-        let l2 = Line::from_tuples((-9, 10), (3, -2));
-        assert_eq!(l1.intersection(&l2), None);
-
-        let l1 = Line::new(Point { x: 10, y: 10 }, Point { x: 5, y: 5 });
-        let l2 = Line::new(Point { x: 5, y: 5 }, Point { x: 0, y: 0 });
-        assert_eq!(
-            l1.intersection(&l2).unwrap(),
-            Line::from_tuples((5, 5), (5, 5))
-        );
-
-        let l1 = Line::from_tuples((0, 0), (5, 5));
-        let l2 = Line::from_tuples((5, 0), (0, 5));
-        assert_eq!(l1.intersection(&l2), None);
-
-        let l1 = Line::from_tuples((0, 0), (5, 5));
-        let l2 = Line::from_tuples((4, 0), (0, 4));
-        assert_eq!(
-            l1.intersection(&l2).unwrap(),
-            Line::from_tuples((2, 2), (2, 2))
-        );
-
-        let l1 = Line::from_tuples((2, 0), (12, 10));
-        let l2 = Line::from_tuples((2, 0), (8, -6));
-        assert_eq!(
-            l1.intersection(&l2).unwrap(),
-            Line::from_tuples((2, 0), (2, 0))
-        );
-
-        let l1 = Line::from_tuples((0, 0), (0, 0));
-        let l2 = Line::from_tuples((0, 0), (0, 0));
-        assert_eq!(
-            l1.intersection(&l2).unwrap(),
-            Line::from_tuples((0, 0), (0, 0))
-        );
-
-        let l1 = Line::from_tuples((0, 0), (0, 0));
-        let l2 = Line::from_tuples((-5, -5), (5, 5));
-        assert_eq!(
-            l1.intersection(&l2).unwrap(),
-            Line::from_tuples((0, 0), (0, 0))
-        );
-    }
-
-    #[test]
-    fn test_crosses() {
-        let l1 = Line::from_tuples((0, 0), (5, 5));
-        let l2 = Line::from_tuples((5, 0), (0, 5));
-        assert!(l1.crosses(&l2));
-
-        let l1 = Line::from_tuples((0, 0), (4, 4));
-        let l2 = Line::from_tuples((4, 0), (0, 4));
-        assert!(l1.crosses(&l2));
-
-        let l1 = Line::from_tuples((0, 0), (4, 4));
-        let l2 = Line::from_tuples((2, 3), (0, 5));
-        assert!(!l1.crosses(&l2));
+        test_file("input.txt", "1741");
     }
 }
