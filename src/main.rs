@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use pathfinding::prelude::dijkstra;
 use std::{
     collections::{HashMap, HashSet},
@@ -92,9 +93,9 @@ fn compute_pressure_release(path: &Vec<String>, graph: &Graph, distance_map: &Di
         let valve = graph.get(&t).unwrap();
         rate += valve.rate;
     }
-    // if we have time to spare, release will increase until we get to 30
-    if time < 30 {
-        release += rate * (30 - time)
+    // if we have time to spare, release will increase until we get to 26
+    if time < 26 {
+        release += rate * (26 - time)
     }
     release
 }
@@ -127,7 +128,7 @@ fn walk(
         // and 1 minute in this valve:
         time_spent += 1;
 
-        if time + time_spent > 30 {
+        if time + time_spent > 26 {
             continue;
         }
 
@@ -188,15 +189,28 @@ fn solution(graph: Graph) -> u32 {
         }
     }
     let dm = distance_map(&graph, &skip);
-    // for item in dm.iter() {
-    //     println!("{:?}", item);
-    // }
-    let mut path = vec!["AA".to_owned()];
+
     let mut result = 0;
-    walk(&mut path, 0, &mut good_valves, &graph, &dm, &mut result);
-    // for p in good_valves.iter().filter(|v| *v != "AA").permutations(good_valves.len() - 1) {
-    //     println!("{:?}", p);
-    // }
+    for i in 1..=(good_valves.len() - 1) / 2 {
+        for my_valves in good_valves.iter().filter(|v| *v != "AA").combinations(i) {
+            let mut elephant_valves: Vec<String> = good_valves.iter().filter(|v| !my_valves.contains(v)).cloned().collect();
+            let mut my_valves: Vec<String> = my_valves.iter().map(|x| (*x).clone()).collect();
+            my_valves.push("AA".to_owned());
+            println!("me: {:?} elephant: {:?}", my_valves, elephant_valves);
+
+            let mut my_result = 0;
+            let mut path = vec!["AA".to_owned()];
+            walk(&mut path, 0, &mut my_valves, &graph, &dm, &mut my_result);
+
+            let mut path = vec!["AA".to_owned()];
+            let mut elephant_result = 0;
+            walk(&mut path, 0, &mut elephant_valves, &graph, &dm, &mut elephant_result);
+
+            let total = my_result + elephant_result;
+            result = max(total, result);
+        }
+    }
+
     result
 }
 
