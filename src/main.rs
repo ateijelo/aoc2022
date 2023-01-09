@@ -1,221 +1,243 @@
-use itertools::Itertools;
-use pathfinding::prelude::dijkstra;
 use std::{
-    collections::{HashMap, HashSet},
-    fmt::Debug,
-    io::{self, BufRead}, cmp::max,
+    env,
+    fmt::{Debug, Display},
+    io::{self, BufRead},
 };
 
-use regex::Regex;
+#[derive(Debug, Clone)]
+struct Point {
+    x: i32,
+    y: i32,
+}
 
 #[derive(Debug)]
-struct Valve {
-    // name: String,
-    rate: u32,
-    neighbors: Vec<String>,
+struct Piece {
+    name: String,
+    blocks: Vec<Point>,
 }
 
-type Graph = HashMap<String, Valve>;
-type DistanceMap = HashMap<(String, String), Option<usize>>;
+impl Piece {
+    fn new(blocks: &[(i32, i32)], name: &str) -> Piece {
+        Piece {
+            name: name.to_string(),
+            blocks: blocks.iter().map(|(x, y)| Point { x: *x, y: *y }).collect(),
+        }
+    }
+}
 
-fn parse_input(lines: &[String]) -> Graph {
-    let mut valves = HashMap::new();
-    let re = Regex::new(r"Valve (?P<valve>\w+) has flow rate=(?P<rate>\d+); tunnels? leads? to valves? (?P<neighbors>[A-Z, ]+)")
-        .unwrap();
+impl Display for Piece {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name)
+    }
+}
+
+type Row = u32;
+
+struct Board {
+    rows: Vec<Row>,
+    width: usize,
+}
+
+impl Board {
+    fn new() -> Board {
+        Board {
+            rows: Vec::new(),
+            width: 7,
+        }
+    }
+
+    fn can_hold(&self, piece: &Piece, at: &Point) -> bool {
+        for block in piece.blocks.iter() {
+            let x = at.x + block.x;
+            let y = at.y + block.y;
+
+            if x < 0 {
+                return false;
+            }
+            if x >= self.width as i32 {
+                return false;
+            }
+
+            if y >= self.rows.len() as i32 {
+                continue;
+            }
+
+            if y < 0 {
+                return false;
+            }
+
+            if self.rows[y as usize] & (1 << x) != 0 {
+                return false;
+            }
+        }
+        true
+    }
+
+    fn apply(&mut self, piece: &Piece, at: &Point) {
+        for block in piece.blocks.iter() {
+            let x = at.x + block.x;
+            let y = at.y + block.y;
+
+            if x < 0 {
+                continue;
+            }
+            if x >= self.width as i32 {
+                continue;
+            }
+
+            if y >= self.rows.len() as i32 {
+                self.rows
+                    .extend([0].repeat(1 + y as usize - self.rows.len()))
+            }
+
+            self.rows[y as usize] |= 1 << x;
+        }
+    }
+
+    fn show(&self) {
+        for row in self.rows.iter().rev() {
+            let mut text = String::with_capacity(self.width);
+            for x in 0..self.width {
+                if row & (1 << x) != 0 {
+                    text.push('#');
+                } else {
+                    text.push('.');
+                }
+            }
+            println!("{}", text);
+        }
+    }
+}
+
+fn parse_input(lines: &[String]) -> String {
+    let mut s = "".to_string();
     for line in lines {
-        let caps = re.captures(line).unwrap();
-        let name = caps.name("valve").unwrap().as_str().to_owned();
-        let rate: u32 = caps.name("rate").unwrap().as_str().parse().unwrap();
-        let neighbors: Vec<String> = caps
-            .name("neighbors")
-            .unwrap()
-            .as_str()
-            .split(", ")
-            .map(String::from)
-            .collect();
-        valves.insert(
-            name.clone(),
-            Valve {
-                rate,
-                neighbors,
-            },
-        );
+        s.push_str(line);
     }
-    // println!("valves: {:?}", valves);
-    valves
+    s
 }
 
-// fn walk(
-//     time: usize,
-//     graph: &Graph,
-//     valve: String,
-//     visited: &mut HashSet<String>,
-//     opened: &mut HashSet<String>,
-// ) {
-//     let indent = " ".repeat(time);
-//     // println!("visited: {:?}", visited);
-//     visited.insert(valve.clone());
-//     let v = graph.get(&valve).unwrap();
-//     for neighbor in &v.neighbors {
-//         // let neighbor = graph.get(&name).expect(&format!("graph should have valve named {}", name));
-//         if visited.contains(neighbor) {
-//             continue;
-//         }
-//         println!("{}going from {} to {}", indent, valve, neighbor);
-//         walk(time + 1, graph, neighbor.clone(), visited, opened);
-//         println!("{}returning from {} to {}", indent, neighbor, valve);
-//     }
-//     visited.remove(&valve);
-//     // let actions = ... visit neighbors & open current valve if rate != 0
-//     // for action in actions {
-//     //     walk ( state + action );
-//     // }
-// }
-
-fn compute_pressure_release(path: &Vec<String>, graph: &Graph, distance_map: &DistanceMap) -> u32 {
-    let mut release = 0u32;
-    let mut rate = 0;
-    let mut time = 0;
-    for i in 1..path.len() {
-        let f = path[i - 1].clone();
-        let t = path[i].clone();
-        let d = distance_map.get(&(f, t.clone())).unwrap().unwrap() as u32;
-
-        // while I walk from `f` to `t`, release increases by rate + distance
-        time += d;
-        release += rate * d;
-
-        // when I arrive to `t`, I spend 1 minute opening the valve
-        time += 1;
-        release += rate;
-
-        // and rate increases by `t`'s rate
-        let valve = graph.get(&t).unwrap();
-        rate += valve.rate;
-    }
-    // if we have time to spare, release will increase until we get to 26
-    if time < 26 {
-        release += rate * (26 - time)
-    }
-    release
+#[derive(Debug)]
+struct CycleBufferRow {
+    input_count: usize,
+    piece_count: usize,
+    board_height: usize,
+    row: u32,
 }
 
-fn walk(
-    path: &mut Vec<String>,
-    time: u32,
-    vector: &mut [String],
-    graph: &Graph,
-    distance_map: &DistanceMap,
-    result: &mut u32,
-) {
-    let r = compute_pressure_release(path, graph, distance_map);
-    *result = max(*result, r);
-    if path.len() == vector.len() {
-        // println!("{:?}", path);
-        return;
-    }
-    for i in 0..vector.len() {
-        if path.contains(&vector[i]) {
-            continue;
-        }
+fn solution(input: &str, rock_count: usize) -> u32 {
+    let pieces = vec![
+        Piece::new(&[(0, 0), (1, 0), (2, 0), (3, 0)], "-"),
+        Piece::new(&[(1, 0), (0, 1), (1, 1), (2, 1), (1, 2)], "+"),
+        Piece::new(&[(0, 0), (1, 0), (2, 0), (2, 1), (2, 2)], "┘"),
+        Piece::new(&[(0, 0), (0, 1), (0, 2), (0, 3)], "|"),
+        Piece::new(&[(0, 0), (1, 0), (0, 1), (1, 1)], "▪"),
+    ];
 
-        let from = path.last().unwrap().clone();
-        let to = vector[i].clone();
+    let mut board = Board::new();
+    let mut piece_pos = Point {
+        x: 2,
+        y: board.rows.len() as i32 + 3,
+    };
+    let mut count = 1;
+    let mut input_iter = input.chars().cycle();
+    let mut piece_iter = pieces.iter().cycle();
+    let mut piece = piece_iter.next().unwrap();
+    let mut iteration = 0;
 
-        // we spend `distance` minutes to get to the valve
-        let key = (from, to.clone());
-        let mut time_spent = distance_map.get(&key).unwrap().unwrap() as u32;
-        // and 1 minute in this valve:
-        time_spent += 1;
+    let mut cycle_buf: Vec<CycleBufferRow> = vec![];
 
-        if time + time_spent > 26 {
-            continue;
-        }
+    loop {
+        let c = input_iter.next().unwrap();
+        let mut new_pos = piece_pos.clone();
 
-        path.push(to.clone());
-        walk(
-            path,
-            time + time_spent,
-            vector,
-            graph,
-            distance_map,
-            result,
-        );
-        path.pop();
-    }
-}
-
-fn successors(valve: &str, graph: &Graph) -> Vec<(String, usize)> {
-    if let Some(v) = graph.get(valve) {
-        return v
-            .neighbors
-            .iter()
-            .map(|neighbor| (neighbor.to_string(), 1))
-            .collect();
-    }
-    vec![]
-}
-
-fn distance_map(
-    graph: &Graph,
-    skip: &HashSet<&String>,
-) -> HashMap<(String, String), Option<usize>> {
-    let mut result = HashMap::new();
-
-    for a in graph.keys() {
-        for b in graph.keys() {
-            if skip.contains(a) {
-                continue;
-            };
-            if skip.contains(b) {
-                continue;
-            };
-            let distance =
-                dijkstra(a, |valve| successors(valve, graph), |valve| valve == b).map(|r| r.1);
-            result.insert((a.clone(), b.clone()), distance);
-        }
-    }
-    result
-}
-
-fn solution(graph: Graph) -> u32 {
-    let mut skip = HashSet::new();
-    let mut good_valves = vec![];
-    for valve in graph.keys() {
-        if valve != "AA" && graph.get(valve).unwrap().rate == 0 {
-            skip.insert(valve);
+        // first, try to move it to the sides
+        if c == '>' {
+            new_pos.x += 1
         } else {
-            good_valves.push(valve.clone());
+            new_pos.x -= 1
+        };
+        if board.can_hold(piece, &new_pos) {
+            piece_pos = new_pos.clone();
         }
-    }
-    let dm = distance_map(&graph, &skip);
+        // then, try to move it down
+        new_pos = piece_pos.clone();
+        new_pos.y -= 1;
+        if board.can_hold(piece, &new_pos) {
+            piece_pos = new_pos.clone();
+        } else {
+            board.apply(piece, &piece_pos);
+            // println!("new piece at iteration {}", iteration);
+            if count >= rock_count {
+                break;
+            }
+            // if let Some(127) = board.rows.last() {
+            //     println!(
+            //         "full line: iteration={} board_height={} pieces={};",
+            //         iteration % input.len(),
+            //         board.rows.len(),
+            //         count
+            //     );
+            //     // board.show();
+            // }
+            // try to detect a cycle
 
-    let mut result = 0;
-    for i in 1..=(good_valves.len() - 1) / 2 {
-        for my_valves in good_valves.iter().filter(|v| *v != "AA").combinations(i) {
-            let mut elephant_valves: Vec<String> = good_valves.iter().filter(|v| !my_valves.contains(v)).cloned().collect();
-            let mut my_valves: Vec<String> = my_valves.iter().map(|x| (*x).clone()).collect();
-            my_valves.push("AA".to_owned());
-            println!("me: {:?} elephant: {:?}", my_valves, elephant_valves);
+            let cycle_length = input.len() * pieces.len();
+            let cycle_row = CycleBufferRow {
+                input_count: iteration,
+                piece_count: count,
+                board_height: board.rows.len(),
+                row: *board.rows.last().unwrap(),
+            };
+            if cycle_buf.len() >= cycle_length {
 
-            let mut my_result = 0;
-            let mut path = vec!["AA".to_owned()];
-            walk(&mut path, 0, &mut my_valves, &graph, &dm, &mut my_result);
+                let c = &cycle_buf[cycle_buf.len() - cycle_length];
 
-            let mut path = vec!["AA".to_owned()];
-            let mut elephant_result = 0;
-            walk(&mut path, 0, &mut elephant_valves, &graph, &dm, &mut elephant_result);
+                println!("cycle check {:?} to {:?}", c, cycle_row);
+                if c.input_count % input.len() == iteration % input.len()
+                    && c.piece_count % pieces.len() == count % pieces.len()
+                    && c.row == *board.rows.last().unwrap()
+                {
+                    println!("cycle detected! from {:?} to {:?}", c, cycle_row);
+                }
+            }
 
-            let total = my_result + elephant_result;
-            result = max(total, result);
+            cycle_buf.push(cycle_row);
+            // println!("iteration={} input.len()={}", iteration, input.len());
+            if iteration > 0 && iteration % input.len() == 0
+            //     && board.rows.len() > 2
+            //     && board.rows.first().unwrap() == board.rows.last().unwrap()
+            {
+                println!(
+                    "{:b} input.len()={} iteration={} board_height={} pieces={} last_piece={};",
+                    board.rows.last().unwrap_or(&0),
+                    input.len(),
+                    iteration,
+                    board.rows.len(),
+                    count,
+                    piece,
+                );
+                //     println!("board.rows.first(): {}", board.rows.first().unwrap());
+                //     println!("board.rows.last(): {}", board.rows.last().unwrap());
+                //     // println!("repeat at iteration: {}", iteration);
+            }
+            piece = piece_iter.next().unwrap();
+            piece_pos = Point {
+                x: 2,
+                y: board.rows.len() as i32 + 3,
+            };
+            count += 1;
         }
-    }
 
-    result
+        iteration += 1;
+    }
+    // board.show();
+    board.rows.len() as u32
 }
 
 fn solve(lines: &[String]) -> u32 {
-    solution(parse_input(lines))
+    let c: usize = env::args().collect::<Vec<String>>()[1].parse().unwrap();
+    solution(&parse_input(lines), c)
 }
 
 fn main() {
