@@ -341,12 +341,12 @@ fn parse_input(lines: &[String]) -> Vec<Blueprint> {
 }
 
 fn solution(blueprints: &[Blueprint]) -> u32 {
-    let mut score = 0;
-    for (i, blueprint) in blueprints.iter().enumerate() {
-        let mut solver = Solver::new(blueprint, 24);
+    let mut score = 1;
+    for (i, blueprint) in blueprints.iter().take(3).enumerate() {
+        let mut solver = Solver::new(blueprint, 32);
         let g = solver.solve();
         // println!("{:?}", blueprint);
-        score += (i as u32 + 1) * g;
+        score *= g;
         println!("Blueprint {}: {} geodes, score = {}", i + 1, g, score);
     }
     score
@@ -381,12 +381,12 @@ mod tests {
 
     #[test]
     fn test_example() {
-        test_file("example.txt", "33");
+        test_file("example.txt", "3472");
     }
 
     #[test]
     fn test_input() {
-        test_file("input.txt", "978");
+        test_file("input.txt", "15939");
     }
 
     #[test]
