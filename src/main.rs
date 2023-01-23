@@ -13,12 +13,11 @@ type List = Vec<(i64, usize)>;
 
 trait CircularList {
     fn move_item(&mut self, from: usize, to: usize);
-    fn move_circular(&mut self, pos: usize, count: &i64);
+    fn move_circular(&mut self, pos: usize, count: i64);
     fn print_from_zero(&self);
 }
 
 impl CircularList for List {
-
     fn move_item(&mut self, from: usize, to: usize) {
         assert!(to < self.len());
         assert!(from < self.len());
@@ -26,24 +25,15 @@ impl CircularList for List {
             return;
         }
         let elem = self[from];
-        let store_ptr = self.as_mut_ptr();
         if to > from {
-            unsafe {
-                let src = store_ptr.add(from + 1);
-                let dst = store_ptr.add(from);
-                std::ptr::copy(src, dst, to - from);
-            }
+            self[from..=to].rotate_left(1);
         } else {
-            unsafe {
-                let src = store_ptr.add(to);
-                let dst = store_ptr.add(to + 1);
-                std::ptr::copy(src, dst, from - to);
-            }
+            self[to..=from].rotate_right(1);
         }
         self[to] = elem;
     }
 
-    fn move_circular(&mut self, pos: usize, count: &i64) {
+    fn move_circular(&mut self, pos: usize, count: i64) {
         let count = count.rem_euclid(self.len() as i64 - 1);
         if count == 0 {
             return;
@@ -66,10 +56,13 @@ impl CircularList for List {
 }
 
 fn solution(nums: &mut List) -> i64 {
+    let mut nums: List = nums.iter().map(|(val, i)| (*val * 811589153, *i)).collect();
     let orig = nums.clone();
-    for value in orig.iter() {
-        let from = nums.iter().position(|x| x == value).unwrap();
-        nums.move_circular(from, &value.0);
+    for _ in 0..10 {
+        for value in orig.iter() {
+            let from = nums.iter().position(|x| x == value).unwrap();
+            nums.move_circular(from, value.0);
+        }
     }
     let zp = nums.iter().position(|x| x.0 == 0).unwrap();
     let a = nums[(zp + 1000).rem_euclid(nums.len())];
@@ -107,39 +100,39 @@ mod tests {
 
     #[test]
     fn test_example() {
-        test_file("example.txt", "3");
+        test_file("example.txt", "1623178306");
     }
 
     #[test]
     fn test_input() {
-        test_file("input.txt", "8028");
+        test_file("input.txt", "8798438007673");
     }
 
     fn make_list(vec: Vec<i64>) -> List {
-        vec.iter().map(|val| (*val, *val as usize)).collect()
+        vec.into_iter().map(|val| (val, val as usize)).collect()
     }
 
     #[test]
     fn test_move_circular() {
         let mut list = make_list(vec![1, 2, 3, 4, 5, 6]);
         let expected = make_list(vec![2, 1, 3, 4, 5, 6]);
-        list.move_circular(0, &1);
+        list.move_circular(0, 1);
         assert_eq!(list, expected);
 
         let mut list = make_list(vec![1, 2, 3, 4, 5, 6]);
         let expected = make_list(vec![2, 3, 4, 5, 1, 6]);
-        list.move_circular(0, &-1);
+        list.move_circular(0, -1);
         assert_eq!(list, expected);
 
         let mut list = make_list(vec![1, 2, 3, 4, 5, 6]);
         let expected = make_list(vec![1, 2, 3, 4, 5, 6]);
-        list.move_circular(0, &10);
+        list.move_circular(0, 10);
         assert_eq!(list, expected);
-        list.move_circular(0, &15);
+        list.move_circular(0, 15);
         assert_eq!(list, expected);
-        list.move_circular(1, &15);
+        list.move_circular(1, 15);
         assert_eq!(list, expected);
-        list.move_circular(5, &15);
+        list.move_circular(5, 15);
         assert_eq!(list, expected);
     }
 }
