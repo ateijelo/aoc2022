@@ -1,78 +1,88 @@
-use std::io::{self, BufRead};
+use std::{
+    collections::HashMap,
+    io::{self, BufRead},
+};
 
-fn parse_input(lines: &[String]) -> List {
-    let mut r = List::new();
+use regex::Regex;
 
-    for (i, line) in lines.iter().enumerate() {
-        r.push((line.parse().unwrap(), i));
-    }
-    r
+#[derive(Debug)]
+enum Phrase {
+    Expr(String, String, String),
+    Number(i64),
 }
 
-type List = Vec<(i64, usize)>;
+type Conversation = HashMap<String, Phrase>;
 
-trait CircularList {
-    fn move_item(&mut self, from: usize, to: usize);
-    fn move_circular(&mut self, pos: usize, count: i64);
-    fn print_from_zero(&self);
+fn parse_input(lines: &[String]) -> HashMap<String, Phrase> {
+    let mut map = HashMap::new();
+    let r1 = Regex::new(r"(\w+): (\d+)$").unwrap();
+    let r2 = Regex::new(r"(\w+): (\w+) ([+*/-]) (\w+)").unwrap();
+
+    for line in lines {
+        if let Some(caps) = r1.captures(line) {
+            let name: String = caps.get(1).unwrap().as_str().to_string();
+            let value: i64 = caps.get(2).unwrap().as_str().parse().unwrap();
+            map.insert(name, Phrase::Number(value));
+        }
+        if let Some(caps) = r2.captures(line) {
+            let name: String = caps.get(1).unwrap().as_str().to_string();
+            let lhs: String = caps.get(2).unwrap().as_str().to_string();
+            let op: String = caps.get(3).unwrap().as_str().to_string();
+            let rhs: String = caps.get(4).unwrap().as_str().to_string();
+            map.insert(name, Phrase::Expr(lhs, op, rhs));
+        }
+    }
+    map
 }
 
-impl CircularList for List {
-    fn move_item(&mut self, from: usize, to: usize) {
-        assert!(to < self.len());
-        assert!(from < self.len());
-        if to == from {
-            return;
-        }
-        let elem = self[from];
-        if to > from {
-            self[from..=to].rotate_left(1);
-        } else {
-            self[to..=from].rotate_right(1);
-        }
-        self[to] = elem;
-    }
-
-    fn move_circular(&mut self, pos: usize, count: i64) {
-        let count = count.rem_euclid(self.len() as i64 - 1);
-        if count == 0 {
-            return;
-        }
-        let to = (pos as i64 + count).rem_euclid(self.len() as i64 - 1) as usize;
-        self.move_item(pos, to);
-    }
-
-    fn print_from_zero(&self) {
-        let zp = self.iter().position(|x| x.0 == 0).unwrap();
-        for i in 0..self.len() {
-            print!(
-                "{}{}",
-                self[(zp + i).rem_euclid(self.len())].0,
-                if i < (self.len() - 1) { ", " } else { "" }
-            );
-        }
-        println!();
+fn evaluate(lv: i64, op: &str, rv: i64) -> i64 {
+    println!("evaluating {} {} {}", lv, op, rv);
+    match op {
+        "+" => lv + rv,
+        "-" => lv - rv,
+        "*" => lv * rv,
+        "/" => lv / rv,
+        _ => panic!("invalid operator: {}", op),
     }
 }
 
-fn solution(nums: &mut List) -> i64 {
-    let mut nums: List = nums.iter().map(|(val, i)| (*val * 811589153, *i)).collect();
-    let orig = nums.clone();
-    for _ in 0..10 {
-        for value in orig.iter() {
-            let from = nums.iter().position(|x| x == value).unwrap();
-            nums.move_circular(from, value.0);
+fn solution(conversation: &Conversation) -> i64 {
+    let mut known: HashMap<&String, i64> = HashMap::new();
+    let names: Vec<String> = conversation.keys().map(|x| (*x).clone()).collect();
+    loop {
+        let previously_known = known.len();
+        for name in names.iter() {
+            if known.get(name).is_none() {
+                let value = conversation.get(name).unwrap();
+
+                match value {
+                    Phrase::Number(v) => {
+                        known.insert(name, *v);
+                    }
+                    Phrase::Expr(lhs, op, rhs) => {
+                        if let Some(lv) = known.get(lhs) {
+                            if let Some(rv) = known.get(rhs) {
+                                let r = evaluate(*lv, op, *rv);
+                                known.insert(name, r);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if known.contains_key(&"root".to_string()) {
+            break;
+        }
+        if known.len() == previously_known {
+            break;
         }
     }
-    let zp = nums.iter().position(|x| x.0 == 0).unwrap();
-    let a = nums[(zp + 1000).rem_euclid(nums.len())];
-    let b = nums[(zp + 2000).rem_euclid(nums.len())];
-    let c = nums[(zp + 3000).rem_euclid(nums.len())];
-    a.0 + b.0 + c.0
+    let r = known.get(&"root".to_string()).unwrap();
+    *r
 }
 
 fn solve(lines: &[String]) -> i64 {
-    solution(&mut parse_input(lines))
+    solution(&parse_input(lines))
 }
 
 fn main() {
@@ -100,39 +110,11 @@ mod tests {
 
     #[test]
     fn test_example() {
-        test_file("example.txt", "1623178306");
+        test_file("example.txt", "152");
     }
 
     #[test]
     fn test_input() {
-        test_file("input.txt", "8798438007673");
-    }
-
-    fn make_list(vec: Vec<i64>) -> List {
-        vec.into_iter().map(|val| (val, val as usize)).collect()
-    }
-
-    #[test]
-    fn test_move_circular() {
-        let mut list = make_list(vec![1, 2, 3, 4, 5, 6]);
-        let expected = make_list(vec![2, 1, 3, 4, 5, 6]);
-        list.move_circular(0, 1);
-        assert_eq!(list, expected);
-
-        let mut list = make_list(vec![1, 2, 3, 4, 5, 6]);
-        let expected = make_list(vec![2, 3, 4, 5, 1, 6]);
-        list.move_circular(0, -1);
-        assert_eq!(list, expected);
-
-        let mut list = make_list(vec![1, 2, 3, 4, 5, 6]);
-        let expected = make_list(vec![1, 2, 3, 4, 5, 6]);
-        list.move_circular(0, 10);
-        assert_eq!(list, expected);
-        list.move_circular(0, 15);
-        assert_eq!(list, expected);
-        list.move_circular(1, 15);
-        assert_eq!(list, expected);
-        list.move_circular(5, 15);
-        assert_eq!(list, expected);
+        test_file("input.txt", "21208142603224");
     }
 }
