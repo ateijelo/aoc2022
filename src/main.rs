@@ -6,168 +6,197 @@ use std::{
 
 use regex::Regex;
 
-#[derive(Debug)]
-enum Op {
-    Add,
-    Sub,
-    Mul,
-    Div,
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+enum Cell {
+    Blank,
+    Dot,
+    Wall,
+    Dir(char),
 }
 
-impl Op {
-    fn from(s: &str) -> Self {
-        match s {
-            "+" => Op::Add,
-            "-" => Op::Sub,
-            "*" => Op::Mul,
-            "/" => Op::Div,
-            _ => panic!("invalid operator: {}", s),
-        }
-    }
-}
-
-impl Display for Op {
+impl Display for Cell {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let symbol = match self {
-            Op::Add => "+",
-            Op::Sub => "-",
-            Op::Mul => "*",
-            Op::Div => "/",
-        };
-        write!(f, "{}", symbol)
+        write!(
+            f,
+            "{}",
+            match self {
+                Cell::Blank => ' ',
+                Cell::Dot => '.',
+                Cell::Wall => '#',
+                Cell::Dir(c) => *c,
+            }
+        )
     }
 }
 
 #[derive(Debug)]
-enum Phrase {
-    Expr(String, Op, String),
-    Number(i64),
+enum Move {
+    Right,
+    Left,
+    Walk(usize),
 }
 
-type Conversation = HashMap<String, Phrase>;
+struct Input {
+    map: Vec<Vec<Cell>>,
+    steps: Vec<Move>,
+}
 
-fn parse_input(lines: &[String]) -> HashMap<String, Phrase> {
-    let mut map = HashMap::new();
-    let r1 = Regex::new(r"(\w+): (\d+)$").unwrap();
-    let r2 = Regex::new(r"(\w+): (\w+) ([+*/-]) (\w+)").unwrap();
-
+fn parse_input(lines: &[String]) -> Input {
+    let mut steps = Vec::new();
+    let mut map: Vec<Vec<Cell>> = Vec::new();
+    let mut max_length = 0;
     for line in lines {
-        if let Some(caps) = r1.captures(line) {
-            let name: String = caps.get(1).unwrap().as_str().to_string();
-            let value: i64 = caps.get(2).unwrap().as_str().parse().unwrap();
-            map.insert(name, Phrase::Number(value));
+        if line.contains('L') {
+            let re = Regex::new(r"\d+|L|R").unwrap();
+            for m in re.find_iter(line) {
+                steps.push(match m.as_str() {
+                    "L" => Move::Left,
+                    "R" => Move::Right,
+                    v => Move::Walk(v.parse().unwrap()),
+                });
+            }
         }
-        if let Some(caps) = r2.captures(line) {
-            let name: String = caps.get(1).unwrap().as_str().to_string();
-            let lhs: String = caps.get(2).unwrap().as_str().to_string();
-            let op: String = caps.get(3).unwrap().as_str().to_string();
-            let rhs: String = caps.get(4).unwrap().as_str().to_string();
-            map.insert(name, Phrase::Expr(lhs, Op::from(&op), rhs));
+        if line.contains('.') || line.contains('#') {
+            max_length = std::cmp::max(max_length, line.len());
+            map.push(
+                line.chars()
+                    .map(|c| match c {
+                        ' ' => Cell::Blank,
+                        '.' => Cell::Dot,
+                        '#' => Cell::Wall,
+                        _ => panic!("Invalid input"),
+                    })
+                    .collect(),
+            )
         }
     }
-    map
+    for line in map.iter_mut() {
+        line.extend([Cell::Blank].repeat(max_length - line.len()))
+    }
+    // println!("map: {:?}", map);
+    // println!("steps: {:?}", steps);
+    Input { map, steps }
 }
 
-fn evaluate(lv: i64, op: &Op, rv: i64) -> i64 {
-    match op {
-        Op::Add => lv + rv,
-        Op::Sub => lv - rv,
-        Op::Mul => lv * rv,
-        Op::Div => lv / rv,
+struct Vector {
+    x: i32,
+    y: i32,
+}
+
+impl From<(i32, i32)> for Vector {
+    fn from(value: (i32, i32)) -> Self {
+        Vector {
+            x: value.0,
+            y: value.1,
+        }
     }
 }
 
-fn walk(
-    conversation: &Conversation,
-    known: &HashMap<&String, i64>,
-    name: &str,
-    expr: i64,
-) -> Option<i64> {
-    let p = conversation.get(name).unwrap();
-    match p {
-        Phrase::Expr(lhs, op, rhs) => {
-            if let Some(lv) = known.get(lhs) {
-                let rv = match op {
-                    Op::Add => expr - lv, // expr = lv + x, x = expr - lv
-                    Op::Sub => lv - expr, // expr = lv - x, x = lv - expr
-                    Op::Mul => expr / lv, // expr = lv * x, x = expr / lv
-                    Op::Div => lv / expr, // expr = lv / x, x = lv / expr
+fn solution(input: &mut Input) -> usize {
+    let mut x = input.map[0].iter().position(|c| *c == Cell::Dot).unwrap();
+    let mut y = 0usize;
+    let directions = HashMap::from([
+        ('v', Vector::from((0, 1))),
+        ('^', Vector::from((0, -1))),
+        ('>', Vector::from((1, 0))),
+        ('<', Vector::from((-1, 0))),
+    ]);
+    let mut dir = '>';
+    input.map[y][x] = Cell::Dir(dir);
+    for step in input.steps.iter() {
+        // println!("Doing step: {:?}", step);
+        // dbg!(step);
+        match *step {
+            Move::Right => {
+                dir = match dir {
+                    '>' => 'v',
+                    'v' => '<',
+                    '<' => '^',
+                    '^' => '>',
+                    _ => panic!("what?"),
                 };
-                if rhs == "humn" {
-                    return Some(rv);
+            }
+            Move::Left => {
+                dir = match dir {
+                    'v' => '>',
+                    '<' => 'v',
+                    '^' => '<',
+                    '>' => '^',
+                    _ => panic!("what?"),
                 }
-                return walk(conversation, known, rhs, rv);
             }
-            if let Some(rv) = known.get(rhs) {
-                let lv = match op {
-                    Op::Add => expr - rv, // expr = x + rv, x = expr - rv
-                    Op::Sub => expr + rv, // expr = x - rv, x = expr + rv
-                    Op::Mul => expr / rv, // expr = x * rv, x = expr / rv
-                    Op::Div => expr * rv, // expr = x / rv, x = expr * rv
-                };
-                if lhs == "humn" {
-                    return Some(lv);
-                }
-                return walk(conversation, known, lhs, lv);
-            }
-            None
-        }
-        Phrase::Number(_) => None,
-    }
-}
-
-fn solution(conversation: &Conversation) -> i64 {
-    let mut known: HashMap<&String, i64> = HashMap::new();
-
-    let names: Vec<String> = conversation.keys().map(|x| (*x).clone()).collect();
-    loop {
-        let previously_known = known.len();
-        for name in names.iter() {
-            if name == "humn" {
-                continue;
-            }
-            if known.get(name).is_none() {
-                let value = conversation.get(name).unwrap();
-
-                match value {
-                    Phrase::Number(v) => {
-                        known.insert(name, *v);
-                    }
-                    Phrase::Expr(lhs, op, rhs) => {
-                        if let Some(lv) = known.get(lhs) {
-                            if let Some(rv) = known.get(rhs) {
-                                let r = evaluate(*lv, op, *rv);
-                                known.insert(name, r);
-                            }
+            Move::Walk(mut amount) => {
+                // dbg!(amount);
+                let mut tx = x;
+                let mut ty = y;
+                while amount > 0 {
+                    // dbg!(amount);
+                    let nx = (tx as i32 + directions.get(&dir).unwrap().x)
+                        .rem_euclid(input.map[y].len() as i32)
+                        as usize;
+                    let ny = (ty as i32 + directions.get(&dir).unwrap().y)
+                        .rem_euclid(input.map.len() as i32) as usize;
+                    // if input.map[ny][nx] == Cell::Blank {
+                    //     continue;
+                    // }
+                    // dbg!(x, y, nx, ny);
+                    // if x == nx && y == ny {
+                    //     println!("stuck at {} {}", nx, ny);
+                    //     break;
+                    // }
+                    match input.map[ny][nx] {
+                        Cell::Blank => {
+                            // dbg!(tx, ty);
+                            tx = nx;
+                            ty = ny;
+                        }
+                        Cell::Dot | Cell::Dir(_) => {
+                            amount -= 1;
+                            // print!("at {} {}, ", x, y);
+                            x = nx;
+                            y = ny;
+                            tx = nx;
+                            ty = ny;
+                            // println!("moving to {} {}", x, y);
+                            input.map[ny][nx] = Cell::Dir(dir);
+                        }
+                        Cell::Wall => {
+                            break;
                         }
                     }
                 }
             }
         }
-        if known.contains_key(&"root".to_string()) {
-            break;
-        }
-        if known.len() == previously_known {
-            break;
-        }
+
+        input.map[y][x] = Cell::Dir(dir);
     }
-    let p = conversation.get("root").unwrap();
-    let Phrase::Expr(lhs, _, rhs) = p else {
-        panic!("root is a number!");
+    for line in input.map.iter() {
+        for c in line.iter() {
+            print!(
+                "{}",
+                match c {
+                    Cell::Blank => ' ',
+                    Cell::Dot => '.',
+                    Cell::Wall => '#',
+                    Cell::Dir(c) => *c,
+                }
+            );
+        }
+        println!()
+    }
+    println!("final: {} {}, facing {}", x, y, dir);
+    let d = match dir {
+        '>' => 0,
+        'v' => 1,
+        '<' => 2,
+        '^' => 3,
+        _ => panic!("bad dir")
     };
-    if let Some(lv) = known.get(lhs) {
-        // we know lhs, let's solve for rhs = lv
-        return walk(conversation, &known, rhs, *lv).unwrap();
-    }
-    if let Some(rv) = known.get(rhs) {
-        // we know rhs, let's solve for lhs = rv
-        return walk(conversation, &known, lhs, *rv).unwrap();
-    }
-    0
+    1000 * (y + 1) + 4 * (x + 1) + d
 }
 
-fn solve(lines: &[String]) -> i64 {
-    solution(&parse_input(lines))
+fn solve(lines: &[String]) -> usize {
+    solution(&mut parse_input(lines))
 }
 
 fn main() {
@@ -187,19 +216,18 @@ mod tests {
 
         let lines: Vec<String> = reader
             .lines()
-            .map(|x| x.unwrap().trim().to_string())
-            .filter(|x| !x.is_empty())
+            .map(|x| x.unwrap())
             .collect();
         assert_eq!(solve(&lines).to_string(), solution);
     }
 
     #[test]
     fn test_example() {
-        test_file("example.txt", "301");
+        test_file("example.txt", "6032");
     }
 
     #[test]
     fn test_input() {
-        test_file("input.txt", "3882224466191");
+        test_file("input.txt", "88268");
     }
 }
