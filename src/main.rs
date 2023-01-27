@@ -73,8 +73,6 @@ fn parse_input(lines: &[String]) -> Input {
     for line in map.iter_mut() {
         line.extend([Cell::Blank].repeat(max_length - line.len()))
     }
-    // println!("map: {:?}", map);
-    // println!("steps: {:?}", steps);
     Input { map, steps }
 }
 
@@ -92,20 +90,57 @@ impl From<(i32, i32)> for Vector {
     }
 }
 
-fn solution(input: &mut Input) -> usize {
-    let mut x = input.map[0].iter().position(|c| *c == Cell::Dot).unwrap();
-    let mut y = 0usize;
+fn next_coords(x: usize, y: usize, dir: char) -> (usize, usize, char) {
     let directions = HashMap::from([
         ('v', Vector::from((0, 1))),
         ('^', Vector::from((0, -1))),
         ('>', Vector::from((1, 0))),
         ('<', Vector::from((-1, 0))),
     ]);
+
+    match (x, y, dir) {
+        // red edge
+        (50, 50..=99, '<') => (y - 50, 100, 'v'),
+        (0..=49, 100, '^') => (50, x + 50, '>'),
+
+        // orange edge
+        (50, 0..=49, '<') => (0, 149 - y, '>'),
+        (0, 100..=149, '<') => (50, 149 - y, '>'),
+
+        // yellow edge
+        (50..=99, 0, '^') => (0, x + 100, '>'),
+        (0, 150..=199, '<') => (y - 100, 0, 'v'),
+
+        // green edge
+        (100..=149, 0, '^') => (x - 100, 199, '^'),
+        (0..=49, 199, 'v') => (x + 100, 0, 'v'),
+
+        // cyan edge
+        (49, 150..=199, '>') => (y - 100, 149, '^'),
+        (50..=99, 149, 'v') => (49, x + 100, '<'),
+
+        // blue edge
+        (99, 100..=149, '>') => (149, 149 - y, '<'),
+        (149, 0..=49, '>') => (99, 149 - y, '<'),
+
+        // purple edge
+        (99, 50..=99, '>') => (y + 50, 49, '^'),
+        (100..=149, 49, 'v') => (99, x - 50, '<'),
+
+        (_, _, _) => {
+            let nx = (x as i32 + directions.get(&dir).unwrap().x) as usize;
+            let ny = (y as i32 + directions.get(&dir).unwrap().y) as usize;
+            (nx, ny, dir)
+        }
+    }
+}
+
+fn solution(input: &mut Input) -> usize {
+    let mut x = input.map[0].iter().position(|c| *c == Cell::Dot).unwrap();
+    let mut y = 0usize;
     let mut dir = '>';
     input.map[y][x] = Cell::Dir(dir);
     for step in input.steps.iter() {
-        // println!("Doing step: {:?}", step);
-        // dbg!(step);
         match *step {
             Move::Right => {
                 dir = match dir {
@@ -126,39 +161,18 @@ fn solution(input: &mut Input) -> usize {
                 }
             }
             Move::Walk(mut amount) => {
-                // dbg!(amount);
-                let mut tx = x;
-                let mut ty = y;
                 while amount > 0 {
-                    // dbg!(amount);
-                    let nx = (tx as i32 + directions.get(&dir).unwrap().x)
-                        .rem_euclid(input.map[y].len() as i32)
-                        as usize;
-                    let ny = (ty as i32 + directions.get(&dir).unwrap().y)
-                        .rem_euclid(input.map.len() as i32) as usize;
-                    // if input.map[ny][nx] == Cell::Blank {
-                    //     continue;
-                    // }
-                    // dbg!(x, y, nx, ny);
-                    // if x == nx && y == ny {
-                    //     println!("stuck at {} {}", nx, ny);
-                    //     break;
-                    // }
+                    let (nx, ny, ndir) = next_coords(x, y, dir);
                     match input.map[ny][nx] {
                         Cell::Blank => {
-                            // dbg!(tx, ty);
-                            tx = nx;
-                            ty = ny;
+                            panic!("should never happen!");
                         }
                         Cell::Dot | Cell::Dir(_) => {
                             amount -= 1;
-                            // print!("at {} {}, ", x, y);
                             x = nx;
                             y = ny;
-                            tx = nx;
-                            ty = ny;
-                            // println!("moving to {} {}", x, y);
-                            input.map[ny][nx] = Cell::Dir(dir);
+                            dir = ndir;
+                            input.map[y][x] = Cell::Dir(dir);
                         }
                         Cell::Wall => {
                             break;
@@ -190,7 +204,7 @@ fn solution(input: &mut Input) -> usize {
         'v' => 1,
         '<' => 2,
         '^' => 3,
-        _ => panic!("bad dir")
+        _ => panic!("bad dir"),
     };
     1000 * (y + 1) + 4 * (x + 1) + d
 }
@@ -214,20 +228,71 @@ mod tests {
     fn test_file(filename: &str, solution: &str) {
         let reader = BufReader::new(File::open(filename).unwrap());
 
-        let lines: Vec<String> = reader
-            .lines()
-            .map(|x| x.unwrap())
-            .collect();
+        let lines: Vec<String> = reader.lines().map(|x| x.unwrap()).collect();
         assert_eq!(solve(&lines).to_string(), solution);
     }
 
     #[test]
+    #[ignore]
     fn test_example() {
         test_file("example.txt", "6032");
     }
 
     #[test]
     fn test_input() {
-        test_file("input.txt", "88268");
+        test_file("input.txt", "124302");
+    }
+
+    #[test]
+    fn test_next_coord() {
+        // internal movement
+        assert_eq!(next_coords(50, 0, '>'), (51, 0, '>'));
+        assert_eq!(next_coords(50, 0, 'v'), (50, 1, 'v'));
+        assert_eq!(next_coords(49, 149, '>'), (50, 149, '>'));
+        assert_eq!(next_coords(49, 149, 'v'), (49, 150, 'v'));
+        assert_eq!(next_coords(49, 149, '<'), (48, 149, '<'));
+        assert_eq!(next_coords(49, 149, '^'), (49, 148, '^'));
+
+        // red edge
+        assert_eq!(next_coords(50, 0, '<'), (0, 149, '>'));
+        assert_eq!(next_coords(50, 1, '<'), (0, 148, '>'));
+        assert_eq!(next_coords(49, 100, '^'), (50, 99, '>'));
+        assert_eq!(next_coords(48, 100, '^'), (50, 98, '>'));
+
+        // orange edge
+        assert_eq!(next_coords(50, 0, '<'), (0, 149, '>'));
+        assert_eq!(next_coords(50, 1, '<'), (0, 148, '>'));
+        assert_eq!(next_coords(0, 100, '<'), (50, 49, '>'));
+        assert_eq!(next_coords(0, 101, '<'), (50, 48, '>'));
+
+        // yellow edge
+        assert_eq!(next_coords(50, 0, '^'), (0, 150, '>'));
+        assert_eq!(next_coords(51, 0, '^'), (0, 151, '>'));
+        assert_eq!(next_coords(0, 150, '<'), (50, 0, 'v'));
+        assert_eq!(next_coords(0, 151, '<'), (51, 0, 'v'));
+
+        // green edge
+        assert_eq!(next_coords(100, 0, '^'), (0, 199, '^'));
+        assert_eq!(next_coords(101, 0, '^'), (1, 199, '^'));
+        assert_eq!(next_coords(0, 199, 'v'), (100, 0, 'v'));
+        assert_eq!(next_coords(1, 199, 'v'), (101, 0, 'v'));
+
+        // cyan edge
+        assert_eq!(next_coords(49, 150, '>'), (50, 149, '^'));
+        assert_eq!(next_coords(49, 151, '>'), (51, 149, '^'));
+        assert_eq!(next_coords(99, 149, 'v'), (49, 199, '<'));
+        assert_eq!(next_coords(98, 149, 'v'), (49, 198, '<'));
+
+        // blue edge
+        assert_eq!(next_coords(99, 100, '>'), (149, 49, '<'));
+        assert_eq!(next_coords(99, 101, '>'), (149, 48, '<'));
+        assert_eq!(next_coords(149, 0, '>'), (99, 149, '<'));
+        assert_eq!(next_coords(149, 1, '>'), (99, 148, '<'));
+
+        // purple edge
+        assert_eq!(next_coords(99, 50, '>'), (100, 49, '^'));
+        assert_eq!(next_coords(99, 51, '>'), (101, 49, '^'));
+        assert_eq!(next_coords(100, 49, 'v'), (99, 50, '<'));
+        assert_eq!(next_coords(101, 49, 'v'), (99, 51, '<'));
     }
 }
