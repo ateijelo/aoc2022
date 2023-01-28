@@ -1,216 +1,151 @@
 use std::{
-    collections::HashMap,
-    fmt::Display,
+    collections::{HashMap, HashSet},
     io::{self, BufRead},
+    ops::Add,
 };
 
-use regex::Regex;
-
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-enum Cell {
-    Blank,
-    Dot,
-    Wall,
-    Dir(char),
-}
-
-impl Display for Cell {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                Cell::Blank => ' ',
-                Cell::Dot => '.',
-                Cell::Wall => '#',
-                Cell::Dir(c) => *c,
-            }
-        )
-    }
-}
-
-#[derive(Debug)]
-enum Move {
-    Right,
-    Left,
-    Walk(usize),
-}
-
-struct Input {
-    map: Vec<Vec<Cell>>,
-    steps: Vec<Move>,
-}
-
-fn parse_input(lines: &[String]) -> Input {
-    let mut steps = Vec::new();
-    let mut map: Vec<Vec<Cell>> = Vec::new();
-    let mut max_length = 0;
-    for line in lines {
-        if line.contains('L') {
-            let re = Regex::new(r"\d+|L|R").unwrap();
-            for m in re.find_iter(line) {
-                steps.push(match m.as_str() {
-                    "L" => Move::Left,
-                    "R" => Move::Right,
-                    v => Move::Walk(v.parse().unwrap()),
-                });
-            }
-        }
-        if line.contains('.') || line.contains('#') {
-            max_length = std::cmp::max(max_length, line.len());
-            map.push(
-                line.chars()
-                    .map(|c| match c {
-                        ' ' => Cell::Blank,
-                        '.' => Cell::Dot,
-                        '#' => Cell::Wall,
-                        _ => panic!("Invalid input"),
-                    })
-                    .collect(),
-            )
-        }
-    }
-    for line in map.iter_mut() {
-        line.extend([Cell::Blank].repeat(max_length - line.len()))
-    }
-    Input { map, steps }
-}
-
-struct Vector {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct Point {
     x: i32,
     y: i32,
 }
 
-impl From<(i32, i32)> for Vector {
-    fn from(value: (i32, i32)) -> Self {
-        Vector {
-            x: value.0,
-            y: value.1,
-        }
+impl Add for Point {
+    type Output = Point;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Point::new(self.x + rhs.x, self.y + rhs.y)
     }
 }
 
-fn next_coords(x: usize, y: usize, dir: char) -> (usize, usize, char) {
-    let directions = HashMap::from([
-        ('v', Vector::from((0, 1))),
-        ('^', Vector::from((0, -1))),
-        ('>', Vector::from((1, 0))),
-        ('<', Vector::from((-1, 0))),
-    ]);
+impl Add for &Point {
+    type Output = Point;
 
-    match (x, y, dir) {
-        // red edge
-        (50, 50..=99, '<') => (y - 50, 100, 'v'),
-        (0..=49, 100, '^') => (50, x + 50, '>'),
-
-        // orange edge
-        (50, 0..=49, '<') => (0, 149 - y, '>'),
-        (0, 100..=149, '<') => (50, 149 - y, '>'),
-
-        // yellow edge
-        (50..=99, 0, '^') => (0, x + 100, '>'),
-        (0, 150..=199, '<') => (y - 100, 0, 'v'),
-
-        // green edge
-        (100..=149, 0, '^') => (x - 100, 199, '^'),
-        (0..=49, 199, 'v') => (x + 100, 0, 'v'),
-
-        // cyan edge
-        (49, 150..=199, '>') => (y - 100, 149, '^'),
-        (50..=99, 149, 'v') => (49, x + 100, '<'),
-
-        // blue edge
-        (99, 100..=149, '>') => (149, 149 - y, '<'),
-        (149, 0..=49, '>') => (99, 149 - y, '<'),
-
-        // purple edge
-        (99, 50..=99, '>') => (y + 50, 49, '^'),
-        (100..=149, 49, 'v') => (99, x - 50, '<'),
-
-        (_, _, _) => {
-            let nx = (x as i32 + directions.get(&dir).unwrap().x) as usize;
-            let ny = (y as i32 + directions.get(&dir).unwrap().y) as usize;
-            (nx, ny, dir)
-        }
+    fn add(self, rhs: Self) -> Self::Output {
+        Point::new(self.x + rhs.x, self.y + rhs.y)
     }
 }
 
-fn solution(input: &mut Input) -> usize {
-    let mut x = input.map[0].iter().position(|c| *c == Cell::Dot).unwrap();
-    let mut y = 0usize;
-    let mut dir = '>';
-    input.map[y][x] = Cell::Dir(dir);
-    for step in input.steps.iter() {
-        match *step {
-            Move::Right => {
-                dir = match dir {
-                    '>' => 'v',
-                    'v' => '<',
-                    '<' => '^',
-                    '^' => '>',
-                    _ => panic!("what?"),
-                };
-            }
-            Move::Left => {
-                dir = match dir {
-                    'v' => '>',
-                    '<' => 'v',
-                    '^' => '<',
-                    '>' => '^',
-                    _ => panic!("what?"),
+impl Point {
+    fn new(x: i32, y: i32) -> Self {
+        Self { x, y }
+    }
+
+    fn can_move_in_direction(&self, positions: &HashSet<Point>, d: &Point) -> bool {
+        let mut a = *self + Point { x: -1, y: d.y };
+        let b = self + d;
+        let mut c = *self + Point { x: 1, y: d.y };
+        if d.y == 0 {
+            a = *self + Point { x: d.x, y: -1 };
+            c = *self + Point { x: d.x, y: 1 };
+        }
+        !(positions.contains(&a) || positions.contains(&b) || positions.contains(&c))
+    }
+
+    fn is_alone(&self, positions: &HashSet<Point>) -> bool {
+        for dx in [-1, 0, 1] {
+            for dy in [-1, 0, 1] {
+                if dx == 0 && dy == 0 {
+                    continue;
+                }
+                if positions.contains(&(self + &Point::new(dx, dy))) {
+                    return false;
                 }
             }
-            Move::Walk(mut amount) => {
-                while amount > 0 {
-                    let (nx, ny, ndir) = next_coords(x, y, dir);
-                    match input.map[ny][nx] {
-                        Cell::Blank => {
-                            panic!("should never happen!");
-                        }
-                        Cell::Dot | Cell::Dir(_) => {
-                            amount -= 1;
-                            x = nx;
-                            y = ny;
-                            dir = ndir;
-                            input.map[y][x] = Cell::Dir(dir);
-                        }
-                        Cell::Wall => {
-                            break;
-                        }
+        }
+        true
+    }
+}
+
+fn parse_input(lines: &[String]) -> Vec<Point> {
+    let mut r = Vec::new();
+    for (y, line) in lines.iter().enumerate() {
+        for (x, c) in line.chars().enumerate() {
+            if c == '#' {
+                r.push(Point {
+                    x: x as i32,
+                    y: y as i32,
+                })
+            }
+        }
+    }
+    r
+}
+
+// fn print_positions(positions: &HashSet<Point>) {
+//     println!("(-3, -2)");
+//     for y in -2..=9 {
+//         for x in -3..=10 {
+//             if positions.contains(&Point { x, y }) {
+//                 print!("#");
+//             } else {
+//                 print!(".");
+//             }
+//         }
+//         println!()
+//     }
+// }
+
+fn solution(points: &[Point]) -> u32 {
+    let mut positions: HashSet<Point> = points.iter().copied().collect();
+    // key is "destination", value is "source"
+    let mut new_positions: HashMap<Point, Vec<Point>> = HashMap::new();
+
+    let directions = [
+        Point::new(0, -1),
+        Point::new(0, 1),
+        Point::new(-1, 0),
+        Point::new(1, 0),
+    ];
+    let mut next_dir = directions.iter().cycle();
+
+    for _ in 0..10 {
+        let mut dir = next_dir.next().unwrap();
+        for p in positions.iter() {
+            if p.is_alone(&positions) {
+                continue;
+            }
+            for i in 0..4 {
+                if p.can_move_in_direction(&positions, dir) {
+                    let dest = p + dir;
+                    let v = new_positions.entry(dest).or_default();
+                    v.push(*p);
+                    for _ in 0..(4 - i) {
+                        dir = next_dir.next().unwrap();
                     }
+                    break;
+                }
+                dir = next_dir.next().unwrap();
+            }
+        }
+        let mut someone_moved = false;
+        for (dest, sources) in new_positions.iter() {
+            if sources.len() == 1 {
+                let source = sources.first().unwrap();
+                if source != dest {
+                    // make the move
+                    positions.remove(source);
+                    positions.insert(*dest);
+                    someone_moved = true;
                 }
             }
         }
-
-        input.map[y][x] = Cell::Dir(dir);
-    }
-    for line in input.map.iter() {
-        for c in line.iter() {
-            print!(
-                "{}",
-                match c {
-                    Cell::Blank => ' ',
-                    Cell::Dot => '.',
-                    Cell::Wall => '#',
-                    Cell::Dir(c) => *c,
-                }
-            );
+        new_positions.clear();
+        if !someone_moved {
+            break;
         }
-        println!()
     }
-    println!("final: {} {}, facing {}", x, y, dir);
-    let d = match dir {
-        '>' => 0,
-        'v' => 1,
-        '<' => 2,
-        '^' => 3,
-        _ => panic!("bad dir"),
-    };
-    1000 * (y + 1) + 4 * (x + 1) + d
+
+    let minx = positions.iter().map(|p| p.x).min().unwrap();
+    let miny = positions.iter().map(|p| p.y).min().unwrap();
+    let maxx = positions.iter().map(|p| p.x).max().unwrap();
+    let maxy = positions.iter().map(|p| p.y).max().unwrap();
+
+    (maxx.abs_diff(minx) + 1) * (maxy.abs_diff(miny) + 1) - positions.len() as u32
 }
 
-fn solve(lines: &[String]) -> usize {
-    solution(&mut parse_input(lines))
+fn solve(lines: &[String]) -> u32 {
+    solution(&parse_input(lines))
 }
 
 fn main() {
@@ -233,66 +168,12 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn test_example() {
-        test_file("example.txt", "6032");
+        test_file("example.txt", "110");
     }
 
     #[test]
     fn test_input() {
-        test_file("input.txt", "124302");
-    }
-
-    #[test]
-    fn test_next_coord() {
-        // internal movement
-        assert_eq!(next_coords(50, 0, '>'), (51, 0, '>'));
-        assert_eq!(next_coords(50, 0, 'v'), (50, 1, 'v'));
-        assert_eq!(next_coords(49, 149, '>'), (50, 149, '>'));
-        assert_eq!(next_coords(49, 149, 'v'), (49, 150, 'v'));
-        assert_eq!(next_coords(49, 149, '<'), (48, 149, '<'));
-        assert_eq!(next_coords(49, 149, '^'), (49, 148, '^'));
-
-        // red edge
-        assert_eq!(next_coords(50, 0, '<'), (0, 149, '>'));
-        assert_eq!(next_coords(50, 1, '<'), (0, 148, '>'));
-        assert_eq!(next_coords(49, 100, '^'), (50, 99, '>'));
-        assert_eq!(next_coords(48, 100, '^'), (50, 98, '>'));
-
-        // orange edge
-        assert_eq!(next_coords(50, 0, '<'), (0, 149, '>'));
-        assert_eq!(next_coords(50, 1, '<'), (0, 148, '>'));
-        assert_eq!(next_coords(0, 100, '<'), (50, 49, '>'));
-        assert_eq!(next_coords(0, 101, '<'), (50, 48, '>'));
-
-        // yellow edge
-        assert_eq!(next_coords(50, 0, '^'), (0, 150, '>'));
-        assert_eq!(next_coords(51, 0, '^'), (0, 151, '>'));
-        assert_eq!(next_coords(0, 150, '<'), (50, 0, 'v'));
-        assert_eq!(next_coords(0, 151, '<'), (51, 0, 'v'));
-
-        // green edge
-        assert_eq!(next_coords(100, 0, '^'), (0, 199, '^'));
-        assert_eq!(next_coords(101, 0, '^'), (1, 199, '^'));
-        assert_eq!(next_coords(0, 199, 'v'), (100, 0, 'v'));
-        assert_eq!(next_coords(1, 199, 'v'), (101, 0, 'v'));
-
-        // cyan edge
-        assert_eq!(next_coords(49, 150, '>'), (50, 149, '^'));
-        assert_eq!(next_coords(49, 151, '>'), (51, 149, '^'));
-        assert_eq!(next_coords(99, 149, 'v'), (49, 199, '<'));
-        assert_eq!(next_coords(98, 149, 'v'), (49, 198, '<'));
-
-        // blue edge
-        assert_eq!(next_coords(99, 100, '>'), (149, 49, '<'));
-        assert_eq!(next_coords(99, 101, '>'), (149, 48, '<'));
-        assert_eq!(next_coords(149, 0, '>'), (99, 149, '<'));
-        assert_eq!(next_coords(149, 1, '>'), (99, 148, '<'));
-
-        // purple edge
-        assert_eq!(next_coords(99, 50, '>'), (100, 49, '^'));
-        assert_eq!(next_coords(99, 51, '>'), (101, 49, '^'));
-        assert_eq!(next_coords(100, 49, 'v'), (99, 50, '<'));
-        assert_eq!(next_coords(101, 49, 'v'), (99, 51, '<'));
+        test_file("input.txt", "3925");
     }
 }
