@@ -72,20 +72,6 @@ fn parse_input(lines: &[String]) -> Vec<Point> {
     r
 }
 
-// fn print_positions(positions: &HashSet<Point>) {
-//     println!("(-3, -2)");
-//     for y in -2..=9 {
-//         for x in -3..=10 {
-//             if positions.contains(&Point { x, y }) {
-//                 print!("#");
-//             } else {
-//                 print!(".");
-//             }
-//         }
-//         println!()
-//     }
-// }
-
 fn solution(points: &[Point]) -> u32 {
     let mut positions: HashSet<Point> = points.iter().copied().collect();
     // key is "destination", value is "source"
@@ -99,7 +85,8 @@ fn solution(points: &[Point]) -> u32 {
     ];
     let mut next_dir = directions.iter().cycle();
 
-    for _ in 0..10 {
+    let mut round = 1;
+    loop {
         let mut dir = next_dir.next().unwrap();
         for p in positions.iter() {
             if p.is_alone(&positions) {
@@ -134,14 +121,10 @@ fn solution(points: &[Point]) -> u32 {
         if !someone_moved {
             break;
         }
+        round += 1;
     }
 
-    let minx = positions.iter().map(|p| p.x).min().unwrap();
-    let miny = positions.iter().map(|p| p.y).min().unwrap();
-    let maxx = positions.iter().map(|p| p.x).max().unwrap();
-    let maxy = positions.iter().map(|p| p.y).max().unwrap();
-
-    (maxx.abs_diff(minx) + 1) * (maxy.abs_diff(miny) + 1) - positions.len() as u32
+    round
 }
 
 fn solve(lines: &[String]) -> u32 {
@@ -169,11 +152,11 @@ mod tests {
 
     #[test]
     fn test_example() {
-        test_file("example.txt", "110");
+        test_file("example.txt", "20");
     }
 
     #[test]
     fn test_input() {
-        test_file("input.txt", "3925");
+        test_file("input.txt", "903");
     }
 }
