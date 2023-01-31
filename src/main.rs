@@ -30,10 +30,6 @@ impl Point {
     fn new(x: i32, y: i32) -> Self {
         Self { x, y }
     }
-
-    fn manhattan_to(&self, other: &Point) -> u32 {
-        self.x.abs_diff(other.x) + self.y.abs_diff(other.y)
-    }
 }
 
 struct Input {
@@ -202,7 +198,7 @@ impl<'a> Solver<'a> {
         false
     }
 
-    fn solve(&mut self) -> u32 {
+    fn solve(&mut self, step: u32) -> u32 {
         let moves = [
             ("d", Point::new(0, 1)),
             ("r", Point::new(1, 0)),
@@ -211,7 +207,7 @@ impl<'a> Solver<'a> {
             ("u", Point::new(0, -1)),
         ];
         let mut q = VecDeque::new();
-        q.push_back(State { pos: self.start, step: 0 });
+        q.push_back(State { pos: self.start, step });
         while !q.is_empty() {
             let s = q.pop_front().unwrap();
             if s.pos == self.end {
@@ -235,15 +231,17 @@ impl<'a> Solver<'a> {
                 q.push_back(State { pos: np, step: ns });
             }
         }
-        0
+        step
     }
 }
 
 fn solution(input: &Input) -> u32 {
-    let mut solver = Solver::new(input, input.start, input.end);
-    let r = solver.solve();
-
-    r
+    let mut solver_a = Solver::new(input, input.start, input.end);
+    let mut solver_b = Solver::new(input, input.end, input.start);
+    let mut solver_c = Solver::new(input, input.start, input.end);
+    let a = solver_a.solve(0);
+    let b = solver_b.solve(a);
+    solver_c.solve(b)
 }
 
 fn solve(lines: &[String]) -> u32 {
@@ -271,12 +269,12 @@ mod tests {
 
     #[test]
     fn test_example() {
-        test_file("example.txt", "18");
+        test_file("example.txt", "54");
     }
 
     #[test]
     fn test_input() {
-        test_file("input.txt", "221");
+        test_file("input.txt", "739");
     }
 
     #[test]
