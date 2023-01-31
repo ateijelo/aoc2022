@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{HashSet, VecDeque},
     io::{self, BufRead},
     ops::Add,
 };
@@ -31,100 +31,219 @@ impl Point {
         Self { x, y }
     }
 
-    fn can_move_in_direction(&self, positions: &HashSet<Point>, d: &Point) -> bool {
-        let mut a = *self + Point { x: -1, y: d.y };
-        let b = self + d;
-        let mut c = *self + Point { x: 1, y: d.y };
-        if d.y == 0 {
-            a = *self + Point { x: d.x, y: -1 };
-            c = *self + Point { x: d.x, y: 1 };
+    fn manhattan_to(&self, other: &Point) -> u32 {
+        self.x.abs_diff(other.x) + self.y.abs_diff(other.y)
+    }
+}
+
+struct Input {
+    start: Point,
+    end: Point,
+    width: usize,  // blocks between the walls
+    height: usize, // blocks between the walls
+
+    left_blizzards: HashSet<Point>,
+    right_blizzards: HashSet<Point>,
+    up_blizzards: HashSet<Point>,
+    down_blizzards: HashSet<Point>,
+}
+
+fn parse_input(lines: &[String]) -> Input {
+    let lines: Vec<&String> = lines.iter().collect();
+    let mut start = Point { x: 0, y: 0 };
+    let mut end = Point { x: 0, y: 0 };
+    let mut left_blizzards = HashSet::new();
+    let mut right_blizzards = HashSet::new();
+    let mut up_blizzards = HashSet::new();
+    let mut down_blizzards = HashSet::new();
+    let height = lines.len() - 2;
+    let mut width = 0;
+    for (y, line) in lines.iter().enumerate() {
+        let y = y as i32;
+        width = line.len() - 2;
+        for (x, c) in line.chars().enumerate() {
+            let x = x as i32;
+            match c {
+                // '#' => {}
+                '.' => {
+                    if y == 0 {
+                        start = Point { x, y };
+                    }
+                    if y == lines.len() as i32 - 1 {
+                        end = Point { x, y };
+                    }
+                }
+                '<' => {
+                    left_blizzards.insert(Point { x, y });
+                }
+                '>' => {
+                    right_blizzards.insert(Point { x, y });
+                }
+                'v' => {
+                    down_blizzards.insert(Point { x, y });
+                }
+                '^' => {
+                    up_blizzards.insert(Point { x, y });
+                }
+                _ => {}
+            }
         }
-        !(positions.contains(&a) || positions.contains(&b) || positions.contains(&c))
+    }
+    Input {
+        start,
+        end,
+        width,
+        height,
+        left_blizzards,
+        right_blizzards,
+        up_blizzards,
+        down_blizzards,
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct State {
+    step: u32,
+    pos: Point,
+}
+
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+struct Visit {
+    point: Point,
+    blizzard_state: u32,
+}
+
+impl Visit {
+    fn new(point: Point, blizzard_state: u32) -> Self {
+        Self {
+            point,
+            blizzard_state,
+        }
+    }
+}
+
+struct Solver<'a> {
+    visited: HashSet<Visit>,
+    input: &'a Input,
+    start: Point,
+    end: Point,
+    cycle: u32,
+}
+
+impl<'a> Solver<'a> {
+    fn new(input: &'a Input, start: Point, end: Point) -> Self {
+        Self {
+            visited: HashSet::new(),
+            input,
+            start,
+            end,
+            cycle: num::integer::lcm(input.width as u32, input.height as u32),
+        }
     }
 
-    fn is_alone(&self, positions: &HashSet<Point>) -> bool {
-        for dx in [-1, 0, 1] {
-            for dy in [-1, 0, 1] {
-                if dx == 0 && dy == 0 {
+    fn any_blizzards_at(&self, point: &Point, step: u32) -> bool {
+        if *point == self.start {
+            return false;
+        }
+        if *point == self.end {
+            return false;
+        }
+        if self.out_of_bounds(point) {
+            return false;
+        }
+        let lx = (point.x - 1 + step as i32).rem_euclid(self.input.width as i32) + 1;
+        let rx = (point.x - 1 - step as i32).rem_euclid(self.input.width as i32) + 1;
+        let uy = (point.y - 1 + step as i32).rem_euclid(self.input.height as i32) + 1;
+        let dy = (point.y - 1 - step as i32).rem_euclid(self.input.height as i32) + 1;
+
+        let rb = &self.input.right_blizzards;
+        let lb = &self.input.left_blizzards;
+        let db = &self.input.down_blizzards;
+        let ub = &self.input.up_blizzards;
+
+        if rb.contains(&Point::new(rx, point.y)) {
+            return true;
+        }
+        if lb.contains(&Point::new(lx, point.y)) {
+            return true;
+        }
+        if ub.contains(&Point::new(point.x, uy)) {
+            return true;
+        }
+        if db.contains(&Point::new(point.x, dy)) {
+            return true;
+        }
+        false
+    }
+
+    fn mark_visit(&mut self, point: Point, step: u32) {
+        self.visited
+            .insert(Visit::new(point, step.rem_euclid(self.cycle)));
+    }
+
+    fn has_visited(&self, point: Point, step: u32) -> bool {
+        self.visited
+            .contains(&Visit::new(point, step.rem_euclid(self.cycle)))
+    }
+
+    fn out_of_bounds(&self, point: &Point) -> bool {
+        if *point == self.start {
+            return false;
+        }
+        if *point == self.end {
+            return false;
+        }
+        if point.x < 1 || point.x > self.input.width as i32 {
+            return true;
+        }
+        if point.y < 1 || point.y > self.input.height as i32 {
+            return true;
+        }
+        false
+    }
+
+    fn solve(&mut self) -> u32 {
+        let moves = [
+            ("d", Point::new(0, 1)),
+            ("r", Point::new(1, 0)),
+            ("w", Point::new(0, 0)),
+            ("l", Point::new(-1, 0)),
+            ("u", Point::new(0, -1)),
+        ];
+        let mut q = VecDeque::new();
+        q.push_back(State { pos: self.start, step: 0 });
+        while !q.is_empty() {
+            let s = q.pop_front().unwrap();
+            if s.pos == self.end {
+                return s.step;
+            }
+
+            for (_, dir) in moves {
+                let np = s.pos + dir;
+                let ns = s.step + 1;
+                if self.has_visited(np, ns) {
                     continue;
                 }
-                if positions.contains(&(self + &Point::new(dx, dy))) {
-                    return false;
+                self.mark_visit(np, ns);
+                let ns = s.step + 1;
+                if self.out_of_bounds(&np) {
+                    continue;
                 }
+                if self.any_blizzards_at(&np, ns) {
+                    continue;
+                }
+                q.push_back(State { pos: np, step: ns });
             }
         }
-        true
+        0
     }
 }
 
-fn parse_input(lines: &[String]) -> Vec<Point> {
-    let mut r = Vec::new();
-    for (y, line) in lines.iter().enumerate() {
-        for (x, c) in line.chars().enumerate() {
-            if c == '#' {
-                r.push(Point {
-                    x: x as i32,
-                    y: y as i32,
-                })
-            }
-        }
-    }
+fn solution(input: &Input) -> u32 {
+    let mut solver = Solver::new(input, input.start, input.end);
+    let r = solver.solve();
+
     r
-}
-
-fn solution(points: &[Point]) -> u32 {
-    let mut positions: HashSet<Point> = points.iter().copied().collect();
-    // key is "destination", value is "source"
-    let mut new_positions: HashMap<Point, Vec<Point>> = HashMap::new();
-
-    let directions = [
-        Point::new(0, -1),
-        Point::new(0, 1),
-        Point::new(-1, 0),
-        Point::new(1, 0),
-    ];
-    let mut next_dir = directions.iter().cycle();
-
-    let mut round = 1;
-    loop {
-        let mut dir = next_dir.next().unwrap();
-        for p in positions.iter() {
-            if p.is_alone(&positions) {
-                continue;
-            }
-            for i in 0..4 {
-                if p.can_move_in_direction(&positions, dir) {
-                    let dest = p + dir;
-                    let v = new_positions.entry(dest).or_default();
-                    v.push(*p);
-                    for _ in 0..(4 - i) {
-                        dir = next_dir.next().unwrap();
-                    }
-                    break;
-                }
-                dir = next_dir.next().unwrap();
-            }
-        }
-        let mut someone_moved = false;
-        for (dest, sources) in new_positions.iter() {
-            if sources.len() == 1 {
-                let source = sources.first().unwrap();
-                if source != dest {
-                    // make the move
-                    positions.remove(source);
-                    positions.insert(*dest);
-                    someone_moved = true;
-                }
-            }
-        }
-        new_positions.clear();
-        if !someone_moved {
-            break;
-        }
-        round += 1;
-    }
-
-    round
 }
 
 fn solve(lines: &[String]) -> u32 {
@@ -152,11 +271,27 @@ mod tests {
 
     #[test]
     fn test_example() {
-        test_file("example.txt", "20");
+        test_file("example.txt", "18");
     }
 
     #[test]
     fn test_input() {
-        test_file("input.txt", "903");
+        test_file("input.txt", "221");
+    }
+
+    #[test]
+    fn test_blizzard() {
+        let lines = ["#.######", "#<.....#", "######.#"].map(|x| x.to_string());
+
+        let input = parse_input(&lines);
+        let p = Point::new(1, 0);
+        let solver = Solver::new(&input, p, p);
+
+        // positive cases
+        assert!(solver.any_blizzards_at(&Point::new(1, 1), 0));
+        assert!(solver.any_blizzards_at(&Point::new(6, 1), 1));
+
+        // negative cases, the ! before the `solve` is hard to see
+        assert!(!solver.any_blizzards_at(&Point::new(1, 1), 1));
     }
 }
