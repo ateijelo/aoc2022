@@ -8,3 +8,5 @@ December and the problems got more complex), but it's now done!
 I kept working on top of the same files, since the input parsing and test code
 were very similar for every day. So, each day is one or two commits. I might
 separate each one into a separate directory after I'm done.
+
+July 25th, 2023 update: finally split the code by day
